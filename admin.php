@@ -95,7 +95,7 @@ if (isset($_GET['action']) && $_GET['action'] == 'delete_image') {
   check_pwg_token();
 
   if (!isset($_GET['image_id'])) {
-    echo json_encode(array('status' => 'error', 'error' => 'Missing image_id'));
+    echo json_encode(array('status' => 'error', 'error' => l10n('fd_missing_image_id')));
     die();
   }
 
@@ -143,7 +143,7 @@ if (isset($_GET['action']) && $_GET['action'] == 'delete_image') {
 
   echo json_encode(array(
     'status' => 'ok',
-    'message' => 'Image deleted and cache updated.',
+    'message' => l10n('fd_deleted_and_cache_updated'),
     'deleted_bytes' => $file_size,
     'total_saved_bytes' => $saved_space
   ));
@@ -155,7 +155,7 @@ if (isset($_GET['action']) && $_GET['action'] == 'toggle_favorite') {
   check_pwg_token();
 
   if (!isset($_GET['image_id'])) {
-    echo json_encode(array('status' => 'error', 'error' => 'Missing image_id'));
+    echo json_encode(array('status' => 'error', 'error' => l10n('fd_missing_image_id')));
     die();
   }
 
@@ -175,7 +175,7 @@ if (isset($_GET['action']) && $_GET['action'] == 'toggle_favorite') {
     
     echo json_encode(array('status' => 'ok', 'is_favorite' => $new_status));
   } else {
-    echo json_encode(array('status' => 'error', 'error' => 'Image not found in duplicates table.'));
+    echo json_encode(array('status' => 'error', 'error' => l10n('fd_image_not_found_in_duplicates')));
   }
   die();
 }
