@@ -6,6 +6,10 @@ global $template, $page;
 include_once(PHPWG_ROOT_PATH . 'admin/include/functions.php');
 include_once(FIND_DUPLICATES_PATH . 'main.inc.php');
 
+if (function_exists('load_plugin_lang')) {
+  load_plugin_lang(FIND_DUPLICATES_ID);
+}
+
 // Safe check for development - ensure is_favorite column exists
 $safe_check_query = "SHOW COLUMNS FROM " . FIND_DUPLICATES_TABLE . " LIKE 'is_favorite'";
 $safe_check_result = pwg_query($safe_check_query);
