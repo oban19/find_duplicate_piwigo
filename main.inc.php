@@ -72,7 +72,9 @@ add_event_handler('init', 'find_duplicates_init');
 
 function find_duplicates_init()
 {
-  load_plugin_lang(FIND_DUPLICATES_ID);
+  if (function_exists('load_plugin_lang')) {
+    load_plugin_lang(FIND_DUPLICATES_ID);
+  }
 }
 
 add_event_handler('loc_end_add_uploaded_file', 'find_duplicates_on_upload');

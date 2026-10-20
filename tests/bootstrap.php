@@ -44,3 +44,13 @@ function get_captured_queries() {
     global $captured_queries;
     return $captured_queries;
 }
+if (!function_exists('load_plugin_lang')) {
+    function load_plugin_lang($plugin_id, $language = '') {
+        // Mock load_plugin_lang for tests
+    }
+}
+if (!function_exists('l10n')) {
+    function l10n($string) {
+        return $string;
+    }
+}
