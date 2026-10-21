@@ -38,10 +38,11 @@ if (isset($_GET['action']) && $_GET['action'] == 'scan')
 
     // Zoptymalizowane generowanie hashu na podstawie miniatury (zamiast powolnego pliku oryginalnego)
     $thumb_path = '';
-    if (class_exists('SrcImage') && class_exists('DerivativeImage')) {
+    if (class_exists('SrcImage') && class_exists('DerivativeImage') && class_exists('ImageStdParams')) {
       try {
         $src = new SrcImage($row);
-        $thumb = new DerivativeImage(IMG_SQUARE, $src);
+        $params = ImageStdParams::get_by_type(IMG_SQUARE);
+        $thumb = new DerivativeImage($params, $src);
         $thumb_path_rel = $thumb->get_path();
         $thumb_path_abs = PHPWG_ROOT_PATH . $thumb_path_rel;
 
@@ -50,7 +51,7 @@ if (isset($_GET['action']) && $_GET['action'] == 'scan')
         } else if (file_exists($thumb_path_abs)) {
           $thumb_path = $thumb_path_abs;
         }
-      } catch (Exception $e) {
+      } catch (Throwable $e) {
         // Ignoruj błędy z klasami miniatur
       }
     }
@@ -89,16 +90,36 @@ if (isset($_GET['action']) && $_GET['action'] == 'scan')
     SELECT COUNT(h.image_id) AS c
     FROM ' . FIND_DUPLICATES_TABLE . ' h
     INNER JOIN ' . IMAGES_TABLE . ' i ON h.image_id = i.id
-    WHERE h.phash IS NOT NULL';
+    WHERE h.phash IS NOT NULL AND h.phash != \'failed\'';
   $hashed_row = pwg_db_fetch_assoc(pwg_query($hashed_query));
   $hashed_images = (int)$hashed_row['c'];
   
+  $failed_query = '
+    SELECT COUNT(h.image_id) AS c
+    FROM ' . FIND_DUPLICATES_TABLE . ' h
+    INNER JOIN ' . IMAGES_TABLE . ' i ON h.image_id = i.id
+    WHERE h.phash = \'failed\'';
+  $failed_row = pwg_db_fetch_assoc(pwg_query($failed_query));
+  $failed_images = (int)$failed_row['c'];
+
   echo json_encode(array(
     'processed_in_chunk' => $processed,
     'hashed' => $hashed_images,
     'total' => $total_images,
-    'done' => ($processed == 0 || $hashed_images >= $total_images)
+    'failed' => $failed_images,
+    'done' => ($processed == 0 || ($hashed_images + $failed_images) >= $total_images)
   ));
+  die();
+}
+
+// Handle AJAX retry failed
+if (isset($_GET['action']) && $_GET['action'] == 'retry_failed') {
+  check_pwg_token();
+
+  $query = 'UPDATE ' . FIND_DUPLICATES_TABLE . ' SET phash = NULL WHERE phash = \'failed\'';
+  pwg_query($query);
+
+  echo json_encode(array('status' => 'ok'));
   die();
 }
 
@@ -310,15 +331,23 @@ $hashed_query = '
   SELECT COUNT(h.image_id) AS c
   FROM ' . FIND_DUPLICATES_TABLE . ' h
   INNER JOIN ' . IMAGES_TABLE . ' i ON h.image_id = i.id
-  WHERE h.phash IS NOT NULL';
+  WHERE h.phash IS NOT NULL AND h.phash != \'failed\'';
 $hashed_row = pwg_db_fetch_assoc(pwg_query($hashed_query));
 $hashed_images = (int)$hashed_row['c'];
+
+$failed_query = '
+  SELECT COUNT(h.image_id) AS c
+  FROM ' . FIND_DUPLICATES_TABLE . ' h
+  INNER JOIN ' . IMAGES_TABLE . ' i ON h.image_id = i.id
+  WHERE h.phash = \'failed\'';
+$failed_row = pwg_db_fetch_assoc(pwg_query($failed_query));
+$failed_images = (int)$failed_row['c'];
 
 // Find Duplicates
 $duplicates = array();
 
 // If mode is 'time', we don't require full hashing.
-$is_scan_complete = ($hashed_images > 0 && $hashed_images >= $total_images);
+$is_scan_complete = (($hashed_images + $failed_images) > 0 && ($hashed_images + $failed_images) >= $total_images);
 $can_show_duplicates = ($fd_mode == 'time' || $is_scan_complete);
 
 if ($can_show_duplicates)
@@ -758,6 +787,7 @@ $template->assign(array(
   'FD_END_PAGE' => $end_page,
   'FD_TOTAL_IMAGES' => $total_images,
   'FD_HASHED_IMAGES' => $hashed_images,
+  'FD_FAILED_IMAGES' => $failed_images,
   'FD_ACTION_URL' => FIND_DUPLICATES_ADMIN,
   'PWG_TOKEN' => get_pwg_token(),
   'FD_PAGE_NAME' => isset($_GET['page']) ? $_GET['page'] : 'plugin-' . FIND_DUPLICATES_ID,

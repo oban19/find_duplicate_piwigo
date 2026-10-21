@@ -230,7 +230,7 @@
 
 <div class="fd-toast-container" id="fd-toast-container"></div>
 
-{if $FD_MODE == 'visual' && $FD_HASHED_IMAGES < $FD_TOTAL_IMAGES}
+{if $FD_MODE == 'visual' && (($FD_HASHED_IMAGES + $FD_FAILED_IMAGES) < $FD_TOTAL_IMAGES || $FD_FAILED_IMAGES > 0)}
 <div class="fd-panel">
   <h3>{'Gallery scanning status'|translate}</h3>
   <p>{'To effectively find visual duplicates, the plugin must first generate a hash (fingerprint) for each photo in your gallery.'|translate}</p>
@@ -239,9 +239,14 @@
     {'Scanned photos:'|translate} <strong id="fd-hashed">{$FD_HASHED_IMAGES}</strong> / <strong id="fd-total">{$FD_TOTAL_IMAGES}</strong>
   </p>
 
-  <button id="fd-scan-btn" class="fd-btn" {if $FD_HASHED_IMAGES >= $FD_TOTAL_IMAGES && $FD_TOTAL_IMAGES > 0}disabled{/if}>
+  <button id="fd-scan-btn" class="fd-btn" {if ($FD_HASHED_IMAGES + $FD_FAILED_IMAGES) >= $FD_TOTAL_IMAGES && $FD_TOTAL_IMAGES > 0}disabled{/if}>
     {'Scan gallery'|translate}
   </button>
+  {if $FD_FAILED_IMAGES > 0}
+  <button id="fd-retry-btn" class="fd-btn" style="background: rgba(220,53,69,0.2); border-color: rgba(220,53,69,0.5); color: #d9534f; margin-left: 10px;">
+    {'Retry %s failed images'|translate|sprintf:$FD_FAILED_IMAGES}
+  </button>
+  {/if}
 
   <div class="fd-progress-container" id="fd-progress-container">
     <div class="fd-progress-bar" id="fd-progress-bar"></div>
@@ -259,14 +264,39 @@ var pwgToken = "{$PWG_TOKEN}";
 var actionUrl = "{$FD_ACTION_URL}";
 var isScanning = false;
 
-document.getElementById('fd-scan-btn').addEventListener('click', function() {
-  if (isScanning) return;
-  isScanning = true;
-  this.disabled = true;
-  this.innerText = '{'Scanning in progress...'|translate|escape:'javascript'}';
-  document.getElementById('fd-progress-container').style.display = 'block';
-  scanChunk();
-});
+var scanBtn = document.getElementById('fd-scan-btn');
+if (scanBtn) {
+  scanBtn.addEventListener('click', function() {
+    if (isScanning) return;
+    isScanning = true;
+    this.disabled = true;
+    this.innerText = '{'Scanning in progress...'|translate|escape:'javascript'}';
+    document.getElementById('fd-progress-container').style.display = 'block';
+    scanChunk();
+  });
+}
+
+var retryBtn = document.getElementById('fd-retry-btn');
+if (retryBtn) {
+  retryBtn.addEventListener('click', function() {
+    var btn = this;
+    btn.disabled = true;
+    btn.innerText = '{'Retrying...'|translate|escape:'javascript'}';
+
+    fetch(actionUrl + '&action=retry_failed&pwg_token=' + pwgToken)
+      .then(response => response.json())
+      .then(data => {
+        if (data.status === 'ok') {
+          location.reload();
+        }
+      })
+      .catch(error => {
+        console.error('Error during retry:', error);
+        alert('{'An error occurred.'|translate|escape:'javascript'}');
+        btn.disabled = false;
+      });
+  });
+}
 
 function scanChunk() {
   var url = actionUrl + '&action=scan&pwg_token=' + pwgToken;
@@ -298,7 +328,7 @@ function scanChunk() {
 }
 </script>
 
-{if $FD_MODE == 'time' || ($FD_HASHED_IMAGES >= $FD_TOTAL_IMAGES && $FD_TOTAL_IMAGES > 0)}
+{if $FD_MODE == 'time' || (($FD_HASHED_IMAGES + $FD_FAILED_IMAGES) >= $FD_TOTAL_IMAGES && $FD_TOTAL_IMAGES > 0)}
 
 <form id="fd-filter-form">
   <input type="hidden" id="fd-mode-input" value="{$FD_MODE}">
@@ -419,8 +449,8 @@ function scanChunk() {
       tab.addEventListener('click', function() {
           // Reset explicitly on tab switch
           var mode = this.getAttribute('data-mode');
-          var sim = document.getElementById('fd-similarity-range').value;
-          var sameAlbum = chk.checked ? 1 : 0;
+          var sim = document.getElementById('fd-similarity-range') ? document.getElementById('fd-similarity-range').value : 100;
+          var sameAlbum = chk && chk.checked ? 1 : 0;
           var imageSize = document.getElementById('fd-image-size-select') ? document.getElementById('fd-image-size-select').value : 80;
           // Do not carry over search and hidden states to avoid sticky confusion
           window.location.href = actionUrl + '&fd_mode=' + mode + '&similarity=' + sim + '&same_album=' + sameAlbum + '&fd_image_size=' + imageSize;
