@@ -59,8 +59,17 @@ function find_duplicates_compute_dhash($filepath)
     }
   }
 
-  imagedestroy($thumb);
-  imagedestroy($img);
+  if (is_resource($thumb)) {
+    imagedestroy($thumb);
+  } else {
+    unset($thumb);
+  }
+
+  if (is_resource($img)) {
+    imagedestroy($img);
+  } else {
+    unset($img);
+  }
 
   return $hash; // 64-bit binary string
 }
