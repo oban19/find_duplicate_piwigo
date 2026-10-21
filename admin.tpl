@@ -260,6 +260,25 @@
 </div>
 
 <script type="text/javascript">
+(function(){
+  var tabs = document.querySelectorAll('.fd-tab');
+  tabs.forEach(function(tab) {
+      tab.addEventListener('click', function() {
+          // Reset explicitly on tab switch
+          var mode = this.getAttribute('data-mode');
+          var sim = document.getElementById('fd-similarity-range') ? document.getElementById('fd-similarity-range').value : 100;
+          var chk = document.getElementById('fd-same-album-chk');
+          var sameAlbum = chk && chk.checked ? 1 : 0;
+          var imageSize = document.getElementById('fd-image-size-select') ? document.getElementById('fd-image-size-select').value : 80;
+          // Do not carry over search and hidden states to avoid sticky confusion
+          var actionUrl = "{$FD_ACTION_URL|escape:'javascript'}";
+          window.location.href = actionUrl + '&fd_mode=' + mode + '&similarity=' + sim + '&same_album=' + sameAlbum + '&fd_image_size=' + imageSize;
+      });
+  });
+})();
+</script>
+
+<script type="text/javascript">
 var pwgToken = "{$PWG_TOKEN}";
 var actionUrl = "{$FD_ACTION_URL}";
 var isScanning = false;
@@ -443,19 +462,6 @@ function scanChunk() {
           submitFilters();
       });
   }
-
-  var tabs = document.querySelectorAll('.fd-tab');
-  tabs.forEach(function(tab) {
-      tab.addEventListener('click', function() {
-          // Reset explicitly on tab switch
-          var mode = this.getAttribute('data-mode');
-          var sim = document.getElementById('fd-similarity-range') ? document.getElementById('fd-similarity-range').value : 100;
-          var sameAlbum = chk && chk.checked ? 1 : 0;
-          var imageSize = document.getElementById('fd-image-size-select') ? document.getElementById('fd-image-size-select').value : 80;
-          // Do not carry over search and hidden states to avoid sticky confusion
-          window.location.href = actionUrl + '&fd_mode=' + mode + '&similarity=' + sim + '&same_album=' + sameAlbum + '&fd_image_size=' + imageSize;
-      });
-  });
 
   function updateWarning() {
     if (!chk.checked) {
