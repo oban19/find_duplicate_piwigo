@@ -20,7 +20,7 @@ if (isset($_GET['action']) && $_GET['action'] == 'scan')
   
   // Find images without a hash
   $query = '
-    SELECT id, path 
+    SELECT *
     FROM ' . IMAGES_TABLE . ' i
     LEFT JOIN ' . FIND_DUPLICATES_TABLE . ' h ON i.id = h.image_id
     WHERE h.phash IS NULL
@@ -34,8 +34,29 @@ if (isset($_GET['action']) && $_GET['action'] == 'scan')
 
   while ($row = pwg_db_fetch_assoc($result))
   {
-    $filepath = PHPWG_ROOT_PATH . $row['path'];
     $hash = 'failed';
+
+    // Zoptymalizowane generowanie hashu na podstawie miniatury (zamiast powolnego pliku oryginalnego)
+    $thumb_path = '';
+    if (class_exists('SrcImage') && class_exists('DerivativeImage')) {
+      try {
+        $src = new SrcImage($row);
+        $thumb = new DerivativeImage(IMG_SQUARE, $src);
+        $thumb_path_rel = $thumb->get_path();
+        $thumb_path_abs = PHPWG_ROOT_PATH . $thumb_path_rel;
+
+        if (file_exists($thumb_path_rel)) {
+          $thumb_path = $thumb_path_rel;
+        } else if (file_exists($thumb_path_abs)) {
+          $thumb_path = $thumb_path_abs;
+        }
+      } catch (Exception $e) {
+        // Ignoruj błędy z klasami miniatur
+      }
+    }
+
+    $filepath = (!empty($thumb_path)) ? $thumb_path : PHPWG_ROOT_PATH . $row['path'];
+
     if (file_exists($filepath))
     {
       $computed = find_duplicates_compute_dhash($filepath);
@@ -293,7 +314,12 @@ $hashed_images = (int)$hashed_row['c'];
 
 // Find Duplicates
 $duplicates = array();
-if ($hashed_images > 0 && $hashed_images >= $total_images)
+
+// If mode is 'time', we don't require full hashing.
+$is_scan_complete = ($hashed_images > 0 && $hashed_images >= $total_images);
+$can_show_duplicates = ($fd_mode == 'time' || $is_scan_complete);
+
+if ($can_show_duplicates)
 {
   // Cache Setup
   $cache_dir = PHPWG_ROOT_PATH . '_data/find_duplicates_cache';
@@ -317,14 +343,25 @@ if ($hashed_images > 0 && $hashed_images >= $total_images)
     // Generate data
     $max_diff = round((100 - $similarity_limit) / 100 * 64);
     
-    $query = '
-      SELECT i.id, i.path, i.name, i.file, i.date_creation, i.latitude, i.longitude, i.rotation, i.width, i.height, h.phash, ic.category_id, c.name as cat_name
-      FROM ' . FIND_DUPLICATES_TABLE . ' h
-      INNER JOIN ' . IMAGES_TABLE . ' i ON h.image_id = i.id
-      LEFT JOIN ' . IMAGE_CATEGORY_TABLE . ' ic ON i.id = ic.image_id
-      LEFT JOIN ' . CATEGORIES_TABLE . ' c ON ic.category_id = c.id
-      WHERE h.phash != \'failed\'
-      ORDER BY i.date_creation ASC'; // Sorting by date for time mode
+    if ($fd_mode == 'time') {
+      // In time mode, we don't care about phash, so we can use a LEFT JOIN
+      // or simply query from IMAGES_TABLE directly.
+      $query = '
+        SELECT i.id, i.path, i.name, i.file, i.date_creation, i.latitude, i.longitude, i.rotation, i.width, i.height, ic.category_id, c.name as cat_name
+        FROM ' . IMAGES_TABLE . ' i
+        LEFT JOIN ' . IMAGE_CATEGORY_TABLE . ' ic ON i.id = ic.image_id
+        LEFT JOIN ' . CATEGORIES_TABLE . ' c ON ic.category_id = c.id
+        ORDER BY i.date_creation ASC';
+    } else {
+      $query = '
+        SELECT i.id, i.path, i.name, i.file, i.date_creation, i.latitude, i.longitude, i.rotation, i.width, i.height, h.phash, ic.category_id, c.name as cat_name
+        FROM ' . FIND_DUPLICATES_TABLE . ' h
+        INNER JOIN ' . IMAGES_TABLE . ' i ON h.image_id = i.id
+        LEFT JOIN ' . IMAGE_CATEGORY_TABLE . ' ic ON i.id = ic.image_id
+        LEFT JOIN ' . CATEGORIES_TABLE . ' c ON ic.category_id = c.id
+        WHERE h.phash != \'failed\'
+        ORDER BY i.date_creation ASC';
+    }
       
     $result = pwg_query($query);
     
@@ -349,7 +386,7 @@ if ($hashed_images > 0 && $hashed_images >= $total_images)
           'FILE' => $row['file'],
           'NAME' => $row['name'] ? $row['name'] : $row['file'],
           'URL' => get_root_url() . 'admin.php?page=photo-' . $row['id'],
-          'PHASH' => $row['phash'],
+          'PHASH' => isset($row['phash']) ? $row['phash'] : '',
           'DATE_CREATION' => $row['date_creation'],
           'HAS_GPS' => (!empty($row['latitude']) && !empty($row['longitude'])) ? 1 : 0,
           'HAS_MOTION' => $has_motion,

@@ -22,7 +22,7 @@
 #fd-main .fd-btn:hover { background: rgba(90,150,220,.25); }
 #fd-main .fd-btn:disabled { background: rgba(128,128,128,.1); border-color: rgba(128,128,128,.2); cursor: not-allowed; opacity: 0.6; }
 #fd-main .fd-progress-container { margin-top: 15px; height: 15px; background: rgba(128,128,128,.15); border-radius: 8px; overflow: hidden; display: none; }
-#fd-main .fd-progress-bar { height: 100%; background: rgba(90,160,90,.8); width: 0%; transition: width 0.3s ease; }
+#fd-main .fd-progress-bar { height: 100%; background: rgba(90,160,90,.8); width: 0%; transition: width 1s linear; }
 #fd-main .fd-group { border: 1px solid rgba(128,128,128,.3); margin-bottom: 20px; padding: 15px; border-radius: 10px; background: rgba(128,128,128,.04); }
 #fd-main .fd-group h4 { margin-top: 0; }
 #fd-main .fd-img-wrap { width: 150px; text-align: center; position: relative; }
@@ -230,9 +230,10 @@
 
 <div class="fd-toast-container" id="fd-toast-container"></div>
 
+{if $FD_MODE == 'visual' && $FD_HASHED_IMAGES < $FD_TOTAL_IMAGES}
 <div class="fd-panel">
   <h3>{'Gallery scanning status'|translate}</h3>
-  <p>{'To effectively find duplicates, the plugin must first generate a hash (fingerprint) for each photo in your gallery.'|translate}</p>
+  <p>{'To effectively find visual duplicates, the plugin must first generate a hash (fingerprint) for each photo in your gallery.'|translate}</p>
 
   <p>
     {'Scanned photos:'|translate} <strong id="fd-hashed">{$FD_HASHED_IMAGES}</strong> / <strong id="fd-total">{$FD_TOTAL_IMAGES}</strong>
@@ -245,6 +246,12 @@
   <div class="fd-progress-container" id="fd-progress-container">
     <div class="fd-progress-bar" id="fd-progress-bar"></div>
   </div>
+</div>
+{/if}
+
+<div class="fd-tabs" id="fd-tabs-container">
+  <div class="fd-tab {if $FD_MODE == 'visual'}active{/if}" data-mode="visual">{'Visual (pHash)'|translate}</div>
+  <div class="fd-tab {if $FD_MODE == 'time'}active{/if}" data-mode="time">{'Time (Rolling)'|translate}</div>
 </div>
 
 <script type="text/javascript">
@@ -291,12 +298,7 @@ function scanChunk() {
 }
 </script>
 
-{if $FD_HASHED_IMAGES >= $FD_TOTAL_IMAGES && $FD_TOTAL_IMAGES > 0}
-
-<div class="fd-tabs" id="fd-tabs-container">
-  <div class="fd-tab {if $FD_MODE == 'visual'}active{/if}" data-mode="visual">{'Visual (pHash)'|translate}</div>
-  <div class="fd-tab {if $FD_MODE == 'time'}active{/if}" data-mode="time">{'Time (Rolling)'|translate}</div>
-</div>
+{if $FD_MODE == 'time' || ($FD_HASHED_IMAGES >= $FD_TOTAL_IMAGES && $FD_TOTAL_IMAGES > 0)}
 
 <form id="fd-filter-form">
   <input type="hidden" id="fd-mode-input" value="{$FD_MODE}">
