@@ -255,8 +255,14 @@
 {/if}
 
 <div class="fd-tabs" id="fd-tabs-container">
-  <div class="fd-tab {if $FD_MODE == 'visual'}active{/if}" data-mode="visual">{'Visual (pHash)'|translate}</div>
-  <div class="fd-tab {if $FD_MODE == 'time'}active{/if}" data-mode="time">{'Time (Rolling)'|translate}</div>
+  <div class="fd-tab {if $FD_MODE == 'visual'}active{/if}" data-mode="visual">
+    {'Visual (pHash)'|translate}
+    <span style="font-size: 14px; opacity: 0.7; cursor: help; margin-left: 5px; border-bottom: 1px dotted;" title="{'Finds duplicates by analyzing the actual visual content of the photos (pixel similarity).'|translate}">?</span>
+  </div>
+  <div class="fd-tab {if $FD_MODE == 'time'}active{/if}" data-mode="time">
+    {'Time (Rolling)'|translate}
+    <span style="font-size: 14px; opacity: 0.7; cursor: help; margin-left: 5px; border-bottom: 1px dotted;" title="{'Finds photos taken at the exact same time, regardless of what they look like.'|translate}">?</span>
+  </div>
 </div>
 
 <script type="text/javascript">
