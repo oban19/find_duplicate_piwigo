@@ -22,7 +22,7 @@
 #fd-main .fd-btn:hover { background: rgba(90,150,220,.25); }
 #fd-main .fd-btn:disabled { background: rgba(128,128,128,.1); border-color: rgba(128,128,128,.2); cursor: not-allowed; opacity: 0.6; }
 #fd-main .fd-progress-container { margin-top: 15px; height: 15px; background: rgba(128,128,128,.15); border-radius: 8px; overflow: hidden; display: none; }
-#fd-main .fd-progress-bar { height: 100%; background: rgba(90,160,90,.8); width: 0%; transition: width 0.3s ease; }
+#fd-main .fd-progress-bar { height: 100%; background: rgba(90,160,90,.8); width: 0%; transition: width 1s linear; }
 #fd-main .fd-group { border: 1px solid rgba(128,128,128,.3); margin-bottom: 20px; padding: 15px; border-radius: 10px; background: rgba(128,128,128,.04); }
 #fd-main .fd-group h4 { margin-top: 0; }
 #fd-main .fd-img-wrap { width: 150px; text-align: center; position: relative; }
@@ -55,7 +55,7 @@
 .fd-modal-img-wrap { text-align: center; background: rgba(128,128,128,.1); padding: 15px; border-radius: 8px; border: 1px solid rgba(128,128,128,.3); max-width: 45%; flex-grow: 1; transition: opacity 0.3s ease, transform 0.3s ease, max-width 0.3s ease, padding 0.3s ease, margin 0.3s ease, border-width 0.3s ease, flex-grow 0.3s ease; transform-origin: top center; overflow: hidden; }
 .fd-modal-img-wrap.fd-collapsing { opacity: 0; transform: scale(0.8); max-width: 0; padding-left: 0; padding-right: 0; margin-left: 0; margin-right: 0; border-width: 0; flex-grow: 0.0001; }
 .fd-modal-img-wrap a { display: inline-block; position: relative; overflow: hidden; line-height: 0; }
-.fd-modal-img-wrap img { max-width: 100%; max-height: {$FD_IMAGE_SIZE}vh; object-fit: contain; border-radius: 4px; box-shadow: 0 2px 8px rgba(0,0,0,0.3); vertical-align: top; }
+.fd-modal-img-wrap img { max-width: 100%; max-height: 80vh; object-fit: contain; border-radius: 4px; box-shadow: 0 2px 8px rgba(0,0,0,0.3); vertical-align: top; }
 .fd-modal-img-wrap img.fd-zoom-active-cursor { cursor: crosshair; }
 
 .fd-zoom-lens {
@@ -230,36 +230,97 @@
 
 <div class="fd-toast-container" id="fd-toast-container"></div>
 
+{if $FD_MODE == 'visual' && (($FD_HASHED_IMAGES + $FD_FAILED_IMAGES) < $FD_TOTAL_IMAGES || ($FD_FAILED_IMAGES > 0 && $FD_FAILED_PERCENT >= 5))}
 <div class="fd-panel">
   <h3>{'Gallery scanning status'|translate}</h3>
-  <p>{'To effectively find duplicates, the plugin must first generate a hash (fingerprint) for each photo in your gallery.'|translate}</p>
+  <p>{'To effectively find visual duplicates, the plugin must first generate a hash (fingerprint) for each photo in your gallery.'|translate}</p>
 
   <p>
     {'Scanned photos:'|translate} <strong id="fd-hashed">{$FD_HASHED_IMAGES}</strong> / <strong id="fd-total">{$FD_TOTAL_IMAGES}</strong>
   </p>
 
-  <button id="fd-scan-btn" class="fd-btn" {if $FD_HASHED_IMAGES >= $FD_TOTAL_IMAGES && $FD_TOTAL_IMAGES > 0}disabled{/if}>
+  <button id="fd-scan-btn" class="fd-btn" {if ($FD_HASHED_IMAGES + $FD_FAILED_IMAGES) >= $FD_TOTAL_IMAGES && $FD_TOTAL_IMAGES > 0}disabled{/if}>
     {'Scan gallery'|translate}
   </button>
+  {if $FD_FAILED_IMAGES > 0 && $FD_FAILED_PERCENT >= 5}
+  <button id="fd-retry-btn" class="fd-btn" style="background: rgba(220,53,69,0.2); border-color: rgba(220,53,69,0.5); color: #d9534f; margin-left: 10px;">
+    {'Retry %s failed images'|translate|sprintf:$FD_FAILED_IMAGES}
+  </button>
+  {/if}
 
   <div class="fd-progress-container" id="fd-progress-container">
     <div class="fd-progress-bar" id="fd-progress-bar"></div>
   </div>
 </div>
+{/if}
+
+<div class="fd-tabs" id="fd-tabs-container">
+  <div class="fd-tab {if $FD_MODE == 'visual'}active{/if}" data-mode="visual">
+    {'Visual (pHash)'|translate}
+    <span style="font-size: 14px; opacity: 0.7; cursor: help; margin-left: 5px; border-bottom: 1px dotted;" title="{'Finds duplicates by analyzing the actual visual content of the photos (pixel similarity).'|translate}">?</span>
+  </div>
+  <div class="fd-tab {if $FD_MODE == 'time'}active{/if}" data-mode="time">
+    {'Time (Rolling)'|translate}
+    <span style="font-size: 14px; opacity: 0.7; cursor: help; margin-left: 5px; border-bottom: 1px dotted;" title="{'Finds photos taken at the exact same time, regardless of what they look like.'|translate}">?</span>
+  </div>
+</div>
+
+<script type="text/javascript">
+(function(){
+  var tabs = document.querySelectorAll('.fd-tab');
+  tabs.forEach(function(tab) {
+      tab.addEventListener('click', function() {
+          // Reset explicitly on tab switch
+          var mode = this.getAttribute('data-mode');
+          var sim = document.getElementById('fd-similarity-range') ? document.getElementById('fd-similarity-range').value : 100;
+          var chk = document.getElementById('fd-same-album-chk');
+          var sameAlbum = chk && chk.checked ? 1 : 0;
+          // Do not carry over search and hidden states to avoid sticky confusion
+          var actionUrl = "{$FD_ACTION_URL|escape:'javascript'}";
+          window.location.href = actionUrl + '&fd_mode=' + mode + '&similarity=' + sim + '&same_album=' + sameAlbum;
+      });
+  });
+})();
+</script>
 
 <script type="text/javascript">
 var pwgToken = "{$PWG_TOKEN}";
 var actionUrl = "{$FD_ACTION_URL}";
 var isScanning = false;
 
-document.getElementById('fd-scan-btn').addEventListener('click', function() {
-  if (isScanning) return;
-  isScanning = true;
-  this.disabled = true;
-  this.innerText = '{'Scanning in progress...'|translate|escape:'javascript'}';
-  document.getElementById('fd-progress-container').style.display = 'block';
-  scanChunk();
-});
+var scanBtn = document.getElementById('fd-scan-btn');
+if (scanBtn) {
+  scanBtn.addEventListener('click', function() {
+    if (isScanning) return;
+    isScanning = true;
+    this.disabled = true;
+    this.innerText = '{'Scanning in progress...'|translate|escape:'javascript'}';
+    document.getElementById('fd-progress-container').style.display = 'block';
+    scanChunk();
+  });
+}
+
+var retryBtn = document.getElementById('fd-retry-btn');
+if (retryBtn) {
+  retryBtn.addEventListener('click', function() {
+    var btn = this;
+    btn.disabled = true;
+    btn.innerText = '{'Retrying...'|translate|escape:'javascript'}';
+
+    fetch(actionUrl + '&action=retry_failed&pwg_token=' + pwgToken)
+      .then(response => response.json())
+      .then(data => {
+        if (data.status === 'ok') {
+          location.reload();
+        }
+      })
+      .catch(error => {
+        console.error('Error during retry:', error);
+        alert('{'An error occurred.'|translate|escape:'javascript'}');
+        btn.disabled = false;
+      });
+  });
+}
 
 function scanChunk() {
   var url = actionUrl + '&action=scan&pwg_token=' + pwgToken;
@@ -291,12 +352,7 @@ function scanChunk() {
 }
 </script>
 
-{if $FD_HASHED_IMAGES >= $FD_TOTAL_IMAGES && $FD_TOTAL_IMAGES > 0}
-
-<div class="fd-tabs" id="fd-tabs-container">
-  <div class="fd-tab {if $FD_MODE == 'visual'}active{/if}" data-mode="visual">{'Visual (pHash)'|translate}</div>
-  <div class="fd-tab {if $FD_MODE == 'time'}active{/if}" data-mode="time">{'Time (Rolling)'|translate}</div>
-</div>
+{if $FD_MODE == 'time' || (($FD_HASHED_IMAGES + $FD_FAILED_IMAGES) >= $FD_TOTAL_IMAGES && $FD_TOTAL_IMAGES > 0)}
 
 <form id="fd-filter-form">
   <input type="hidden" id="fd-mode-input" value="{$FD_MODE}">
@@ -333,15 +389,6 @@ function scanChunk() {
     <label style="margin-left: auto; color: #ffc107;">
       <input type="checkbox" id="fd-show-hidden-chk" value="1" {if $FD_SHOW_HIDDEN}checked{/if} style="display:none;">
       <span title="{'Show only hidden favorites'|translate}" style="font-size: 20px; cursor: pointer; text-shadow: 1px 1px 2px rgba(0,0,0,0.3); opacity: {if $FD_SHOW_HIDDEN}1{else}0.5{/if};">★</span>
-    </label>
-
-    <label>
-      {'Image size:'|translate}
-      <select id="fd-image-size-select" style="padding: 5px; border-radius: 4px; background: rgba(128,128,128,.1); color: inherit; border: 1px solid rgba(128,128,128,.4);">
-        <option value="50" {if $FD_IMAGE_SIZE == 50}selected{/if}>50 vh</option>
-        <option value="80" {if $FD_IMAGE_SIZE == 80}selected{/if}>80 vh</option>
-        <option value="100" {if $FD_IMAGE_SIZE == 100}selected{/if}>100 vh</option>
-      </select>
     </label>
 
     <label>
@@ -385,8 +432,7 @@ function scanChunk() {
       var timeInterval = document.getElementById('fd-time-interval-select').value;
 
       var filterAlbum = document.getElementById("fd-filter-album") ? document.getElementById("fd-filter-album").value : 0;
-      var imageSize = document.getElementById("fd-image-size-select") ? document.getElementById("fd-image-size-select").value : 80;
-      window.location.href = actionUrl + "&fd_mode=" + mode + "&similarity=" + sim + "&same_album=" + sameAlbum + "&fd_show_hidden=" + showHidden + "&fd_search_group=" + searchGroup + "&fd_time_interval=" + timeInterval + "&fd_filter_album=" + filterAlbum + "&fd_image_size=" + imageSize;
+      window.location.href = actionUrl + "&fd_mode=" + mode + "&similarity=" + sim + "&same_album=" + sameAlbum + "&fd_show_hidden=" + showHidden + "&fd_search_group=" + searchGroup + "&fd_time_interval=" + timeInterval + "&fd_filter_album=" + filterAlbum;
   }
 
   // Auto-submit when hidden checkbox is toggled
@@ -398,32 +444,12 @@ function scanChunk() {
       });
   }
 
-  var imageSizeSel = document.getElementById('fd-image-size-select');
-  if (imageSizeSel) {
-      imageSizeSel.addEventListener('change', function() {
-          submitFilters();
-      });
-  }
-
   var hiddenChk = document.getElementById('fd-show-hidden-chk');
   if (hiddenChk) {
       hiddenChk.addEventListener('change', function() {
           submitFilters();
       });
   }
-
-  var tabs = document.querySelectorAll('.fd-tab');
-  tabs.forEach(function(tab) {
-      tab.addEventListener('click', function() {
-          // Reset explicitly on tab switch
-          var mode = this.getAttribute('data-mode');
-          var sim = document.getElementById('fd-similarity-range').value;
-          var sameAlbum = chk.checked ? 1 : 0;
-          var imageSize = document.getElementById('fd-image-size-select') ? document.getElementById('fd-image-size-select').value : 80;
-          // Do not carry over search and hidden states to avoid sticky confusion
-          window.location.href = actionUrl + '&fd_mode=' + mode + '&similarity=' + sim + '&same_album=' + sameAlbum + '&fd_image_size=' + imageSize;
-      });
-  });
 
   function updateWarning() {
     if (!chk.checked) {
@@ -477,9 +503,8 @@ function scanChunk() {
         var timeInterval = "{$FD_TIME_INTERVAL|escape:'javascript'}";
         var sortVal = this.value;
 
-        var imageSize = document.getElementById('fd-image-size-select') ? document.getElementById('fd-image-size-select').value : 80;
         var filterAlbum = document.getElementById("fd-filter-album") ? document.getElementById("fd-filter-album").value : 0;
-        window.location.href = actionUrl + "&fd_mode=" + mode + "&similarity=" + similarity + "&same_album=" + sameAlbum + "&fd_show_hidden=" + showHidden + "&fd_search_group=" + searchGroup + "&fd_time_interval=" + timeInterval + "&fd_filter_album=" + filterAlbum + "&fd_image_size=" + imageSize + "&sort=" + sortVal;
+        window.location.href = actionUrl + "&fd_mode=" + mode + "&similarity=" + similarity + "&same_album=" + sameAlbum + "&fd_show_hidden=" + showHidden + "&fd_search_group=" + searchGroup + "&fd_time_interval=" + timeInterval + "&fd_filter_album=" + filterAlbum + "&sort=" + sortVal;
       });
     </script>
 
@@ -520,19 +545,19 @@ function scanChunk() {
     {if $FD_TOTAL_PAGES > 1}
     <div class="fd-pagination">
       {if $FD_CURRENT_PAGE > 1}
-        <a href="{$FD_ACTION_URL}&fd_mode={$FD_MODE}&similarity={$FD_SIMILARITY}&same_album={$FD_SAME_ALBUM}&fd_show_hidden={$FD_SHOW_HIDDEN}&fd_search_group={$FD_SEARCH_GROUP|escape:'url'}&fd_time_interval={$FD_TIME_INTERVAL}&fd_image_size={$FD_IMAGE_SIZE}&sort={$FD_SORT}&p={$FD_CURRENT_PAGE-1}">{'Previous'|translate}</a>
+        <a href="{$FD_ACTION_URL}&fd_mode={$FD_MODE}&similarity={$FD_SIMILARITY}&same_album={$FD_SAME_ALBUM}&fd_show_hidden={$FD_SHOW_HIDDEN}&fd_search_group={$FD_SEARCH_GROUP|escape:'url'}&fd_time_interval={$FD_TIME_INTERVAL}&sort={$FD_SORT}&p={$FD_CURRENT_PAGE-1}">{'Previous'|translate}</a>
       {/if}
 
       {for $p=$FD_START_PAGE to $FD_END_PAGE}
         {if $p == $FD_CURRENT_PAGE}
           <span class="fd-current">{$p}</span>
         {else}
-          <a href="{$FD_ACTION_URL}&fd_mode={$FD_MODE}&similarity={$FD_SIMILARITY}&same_album={$FD_SAME_ALBUM}&fd_show_hidden={$FD_SHOW_HIDDEN}&fd_search_group={$FD_SEARCH_GROUP|escape:'url'}&fd_time_interval={$FD_TIME_INTERVAL}&fd_image_size={$FD_IMAGE_SIZE}&sort={$FD_SORT}&p={$p}">{$p}</a>
+          <a href="{$FD_ACTION_URL}&fd_mode={$FD_MODE}&similarity={$FD_SIMILARITY}&same_album={$FD_SAME_ALBUM}&fd_show_hidden={$FD_SHOW_HIDDEN}&fd_search_group={$FD_SEARCH_GROUP|escape:'url'}&fd_time_interval={$FD_TIME_INTERVAL}&sort={$FD_SORT}&p={$p}">{$p}</a>
         {/if}
       {/for}
 
       {if $FD_CURRENT_PAGE < $FD_TOTAL_PAGES}
-        <a href="{$FD_ACTION_URL}&fd_mode={$FD_MODE}&similarity={$FD_SIMILARITY}&same_album={$FD_SAME_ALBUM}&fd_show_hidden={$FD_SHOW_HIDDEN}&fd_search_group={$FD_SEARCH_GROUP|escape:'url'}&fd_time_interval={$FD_TIME_INTERVAL}&fd_image_size={$FD_IMAGE_SIZE}&sort={$FD_SORT}&p={$FD_CURRENT_PAGE+1}">{'Next'|translate}</a>
+        <a href="{$FD_ACTION_URL}&fd_mode={$FD_MODE}&similarity={$FD_SIMILARITY}&same_album={$FD_SAME_ALBUM}&fd_show_hidden={$FD_SHOW_HIDDEN}&fd_search_group={$FD_SEARCH_GROUP|escape:'url'}&fd_time_interval={$FD_TIME_INTERVAL}&sort={$FD_SORT}&p={$FD_CURRENT_PAGE+1}">{'Next'|translate}</a>
       {/if}
     </div>
     {/if}

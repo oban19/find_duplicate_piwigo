@@ -20,7 +20,7 @@ if (isset($_GET['action']) && $_GET['action'] == 'scan')
   
   // Find images without a hash
   $query = '
-    SELECT id, path 
+    SELECT *
     FROM ' . IMAGES_TABLE . ' i
     LEFT JOIN ' . FIND_DUPLICATES_TABLE . ' h ON i.id = h.image_id
     WHERE h.phash IS NULL
@@ -34,8 +34,30 @@ if (isset($_GET['action']) && $_GET['action'] == 'scan')
 
   while ($row = pwg_db_fetch_assoc($result))
   {
-    $filepath = PHPWG_ROOT_PATH . $row['path'];
     $hash = 'failed';
+
+    // Zoptymalizowane generowanie hashu na podstawie miniatury (zamiast powolnego pliku oryginalnego)
+    $thumb_path = '';
+    if (class_exists('SrcImage') && class_exists('DerivativeImage') && class_exists('ImageStdParams')) {
+      try {
+        $src = new SrcImage($row);
+        $params = ImageStdParams::get_by_type(IMG_SQUARE);
+        $thumb = new DerivativeImage($params, $src);
+        $thumb_path_rel = $thumb->get_path();
+        $thumb_path_abs = PHPWG_ROOT_PATH . $thumb_path_rel;
+
+        if (file_exists($thumb_path_rel)) {
+          $thumb_path = $thumb_path_rel;
+        } else if (file_exists($thumb_path_abs)) {
+          $thumb_path = $thumb_path_abs;
+        }
+      } catch (Throwable $e) {
+        // Ignoruj błędy z klasami miniatur
+      }
+    }
+
+    $filepath = (!empty($thumb_path)) ? $thumb_path : PHPWG_ROOT_PATH . $row['path'];
+
     if (file_exists($filepath))
     {
       $computed = find_duplicates_compute_dhash($filepath);
@@ -67,16 +89,37 @@ if (isset($_GET['action']) && $_GET['action'] == 'scan')
   $hashed_query = '
     SELECT COUNT(h.image_id) AS c
     FROM ' . FIND_DUPLICATES_TABLE . ' h
-    INNER JOIN ' . IMAGES_TABLE . ' i ON h.image_id = i.id';
+    INNER JOIN ' . IMAGES_TABLE . ' i ON h.image_id = i.id
+    WHERE h.phash IS NOT NULL AND h.phash != \'failed\'';
   $hashed_row = pwg_db_fetch_assoc(pwg_query($hashed_query));
   $hashed_images = (int)$hashed_row['c'];
   
+  $failed_query = '
+    SELECT COUNT(h.image_id) AS c
+    FROM ' . FIND_DUPLICATES_TABLE . ' h
+    INNER JOIN ' . IMAGES_TABLE . ' i ON h.image_id = i.id
+    WHERE h.phash = \'failed\'';
+  $failed_row = pwg_db_fetch_assoc(pwg_query($failed_query));
+  $failed_images = (int)$failed_row['c'];
+
   echo json_encode(array(
     'processed_in_chunk' => $processed,
     'hashed' => $hashed_images,
     'total' => $total_images,
-    'done' => ($processed == 0 || $hashed_images >= $total_images)
+    'failed' => $failed_images,
+    'done' => ($processed == 0 || ($hashed_images + $failed_images) >= $total_images)
   ));
+  die();
+}
+
+// Handle AJAX retry failed
+if (isset($_GET['action']) && $_GET['action'] == 'retry_failed') {
+  check_pwg_token();
+
+  $query = 'UPDATE ' . FIND_DUPLICATES_TABLE . ' SET phash = NULL WHERE phash = \'failed\'';
+  pwg_query($query);
+
+  echo json_encode(array('status' => 'ok'));
   die();
 }
 
@@ -212,15 +255,12 @@ if (isset($_GET['similarity']) || isset($_GET['fd_mode'])) {
   $fd_search_group = isset($_GET['fd_search_group']) ? $_GET['fd_search_group'] : '';
 
   $fd_filter_album = isset($_GET['fd_filter_album']) ? (int)$_GET['fd_filter_album'] : (isset($conf['find_duplicates_filter_album']) ? (int)$conf['find_duplicates_filter_album'] : 0);
-  $fd_image_size = isset($_GET['fd_image_size']) ? (int)$_GET['fd_image_size'] : (isset($conf['find_duplicates_image_size']) ? (int)$conf['find_duplicates_image_size'] : 80);
-  if (!in_array($fd_image_size, array(50, 80, 100))) $fd_image_size = 80;
 
   // Save to db
   conf_update_param('find_duplicates_similarity', $similarity_limit);
   conf_update_param('find_duplicates_same_album', $same_album);
   conf_update_param('find_duplicates_mode', $fd_mode);
   conf_update_param('find_duplicates_filter_album', $fd_filter_album);
-  conf_update_param('find_duplicates_image_size', $fd_image_size);
   conf_update_param('find_duplicates_time_interval', $fd_time_interval);
 
   // Update current config
@@ -228,7 +268,6 @@ if (isset($_GET['similarity']) || isset($_GET['fd_mode'])) {
   $conf['find_duplicates_same_album'] = $same_album;
   $conf['find_duplicates_mode'] = $fd_mode;
   $conf['find_duplicates_filter_album'] = $fd_filter_album;
-  $conf['find_duplicates_image_size'] = $fd_image_size;
   $conf['find_duplicates_time_interval'] = $fd_time_interval;
 } else {
   // Read from db or use defaults
@@ -248,9 +287,6 @@ if (isset($_GET['similarity']) || isset($_GET['fd_mode'])) {
   $fd_time_interval = isset($conf['find_duplicates_time_interval']) ? (int)$conf['find_duplicates_time_interval'] : 15;
   $fd_search_group = isset($_GET['fd_search_group']) ? $_GET['fd_search_group'] : '';
   $fd_filter_album = isset($conf['find_duplicates_filter_album']) ? (int)$conf['find_duplicates_filter_album'] : 0;
-
-  $fd_image_size = isset($conf['find_duplicates_image_size']) ? (int)$conf['find_duplicates_image_size'] : 80;
-  if (!in_array($fd_image_size, array(50, 80, 100))) $fd_image_size = 80;
 }
 
 // User Settings for Pagination
@@ -287,13 +323,27 @@ $total_images = (int)$total_row['c'];
 $hashed_query = '
   SELECT COUNT(h.image_id) AS c
   FROM ' . FIND_DUPLICATES_TABLE . ' h
-  INNER JOIN ' . IMAGES_TABLE . ' i ON h.image_id = i.id';
+  INNER JOIN ' . IMAGES_TABLE . ' i ON h.image_id = i.id
+  WHERE h.phash IS NOT NULL AND h.phash != \'failed\'';
 $hashed_row = pwg_db_fetch_assoc(pwg_query($hashed_query));
 $hashed_images = (int)$hashed_row['c'];
 
+$failed_query = '
+  SELECT COUNT(h.image_id) AS c
+  FROM ' . FIND_DUPLICATES_TABLE . ' h
+  INNER JOIN ' . IMAGES_TABLE . ' i ON h.image_id = i.id
+  WHERE h.phash = \'failed\'';
+$failed_row = pwg_db_fetch_assoc(pwg_query($failed_query));
+$failed_images = (int)$failed_row['c'];
+
 // Find Duplicates
 $duplicates = array();
-if ($hashed_images > 0 && $hashed_images >= $total_images)
+
+// If mode is 'time', we don't require full hashing.
+$is_scan_complete = (($hashed_images + $failed_images) > 0 && ($hashed_images + $failed_images) >= $total_images);
+$can_show_duplicates = ($fd_mode == 'time' || $is_scan_complete);
+
+if ($can_show_duplicates)
 {
   // Cache Setup
   $cache_dir = PHPWG_ROOT_PATH . '_data/find_duplicates_cache';
@@ -317,14 +367,25 @@ if ($hashed_images > 0 && $hashed_images >= $total_images)
     // Generate data
     $max_diff = round((100 - $similarity_limit) / 100 * 64);
     
-    $query = '
-      SELECT i.id, i.path, i.name, i.file, i.date_creation, i.latitude, i.longitude, i.rotation, i.width, i.height, h.phash, ic.category_id, c.name as cat_name
-      FROM ' . FIND_DUPLICATES_TABLE . ' h
-      INNER JOIN ' . IMAGES_TABLE . ' i ON h.image_id = i.id
-      LEFT JOIN ' . IMAGE_CATEGORY_TABLE . ' ic ON i.id = ic.image_id
-      LEFT JOIN ' . CATEGORIES_TABLE . ' c ON ic.category_id = c.id
-      WHERE h.phash != \'failed\'
-      ORDER BY i.date_creation ASC'; // Sorting by date for time mode
+    if ($fd_mode == 'time') {
+      // In time mode, we don't care about phash, so we can use a LEFT JOIN
+      // or simply query from IMAGES_TABLE directly.
+      $query = '
+        SELECT i.id, i.path, i.name, i.file, i.date_creation, i.latitude, i.longitude, i.rotation, i.width, i.height, ic.category_id, c.name as cat_name
+        FROM ' . IMAGES_TABLE . ' i
+        LEFT JOIN ' . IMAGE_CATEGORY_TABLE . ' ic ON i.id = ic.image_id
+        LEFT JOIN ' . CATEGORIES_TABLE . ' c ON ic.category_id = c.id
+        ORDER BY i.date_creation ASC';
+    } else {
+      $query = '
+        SELECT i.id, i.path, i.name, i.file, i.date_creation, i.latitude, i.longitude, i.rotation, i.width, i.height, h.phash, ic.category_id, c.name as cat_name
+        FROM ' . FIND_DUPLICATES_TABLE . ' h
+        INNER JOIN ' . IMAGES_TABLE . ' i ON h.image_id = i.id
+        LEFT JOIN ' . IMAGE_CATEGORY_TABLE . ' ic ON i.id = ic.image_id
+        LEFT JOIN ' . CATEGORIES_TABLE . ' c ON ic.category_id = c.id
+        WHERE h.phash != \'failed\'
+        ORDER BY i.date_creation ASC';
+    }
       
     $result = pwg_query($query);
     
@@ -349,7 +410,7 @@ if ($hashed_images > 0 && $hashed_images >= $total_images)
           'FILE' => $row['file'],
           'NAME' => $row['name'] ? $row['name'] : $row['file'],
           'URL' => get_root_url() . 'admin.php?page=photo-' . $row['id'],
-          'PHASH' => $row['phash'],
+          'PHASH' => isset($row['phash']) ? $row['phash'] : '',
           'DATE_CREATION' => $row['date_creation'],
           'HAS_GPS' => (!empty($row['latitude']) && !empty($row['longitude'])) ? 1 : 0,
           'HAS_MOTION' => $has_motion,
@@ -719,6 +780,8 @@ $template->assign(array(
   'FD_END_PAGE' => $end_page,
   'FD_TOTAL_IMAGES' => $total_images,
   'FD_HASHED_IMAGES' => $hashed_images,
+  'FD_FAILED_IMAGES' => $failed_images,
+  'FD_FAILED_PERCENT' => ($total_images > 0) ? ($failed_images / $total_images) * 100 : 0,
   'FD_ACTION_URL' => FIND_DUPLICATES_ADMIN,
   'PWG_TOKEN' => get_pwg_token(),
   'FD_PAGE_NAME' => isset($_GET['page']) ? $_GET['page'] : 'plugin-' . FIND_DUPLICATES_ID,
@@ -732,7 +795,6 @@ $template->assign(array(
   'FD_SORT' => htmlspecialchars($sort_opt),
   'FD_CATEGORIES' => $categories,
   'FD_FILTER_ALBUM' => $fd_filter_album,
-  'FD_IMAGE_SIZE' => $fd_image_size,
   'FD_VERSION' => defined('FIND_DUPLICATES_VERSION') ? FIND_DUPLICATES_VERSION : '1.0.0',
 ));
 
