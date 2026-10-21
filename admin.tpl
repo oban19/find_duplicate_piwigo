@@ -230,7 +230,7 @@
 
 <div class="fd-toast-container" id="fd-toast-container"></div>
 
-{if $FD_MODE == 'visual' && (($FD_HASHED_IMAGES + $FD_FAILED_IMAGES) < $FD_TOTAL_IMAGES || $FD_FAILED_IMAGES > 0)}
+{if $FD_MODE == 'visual' && (($FD_HASHED_IMAGES + $FD_FAILED_IMAGES) < $FD_TOTAL_IMAGES || ($FD_FAILED_IMAGES > 0 && $FD_FAILED_PERCENT >= 5))}
 <div class="fd-panel">
   <h3>{'Gallery scanning status'|translate}</h3>
   <p>{'To effectively find visual duplicates, the plugin must first generate a hash (fingerprint) for each photo in your gallery.'|translate}</p>
@@ -242,7 +242,7 @@
   <button id="fd-scan-btn" class="fd-btn" {if ($FD_HASHED_IMAGES + $FD_FAILED_IMAGES) >= $FD_TOTAL_IMAGES && $FD_TOTAL_IMAGES > 0}disabled{/if}>
     {'Scan gallery'|translate}
   </button>
-  {if $FD_FAILED_IMAGES > 0}
+  {if $FD_FAILED_IMAGES > 0 && $FD_FAILED_PERCENT >= 5}
   <button id="fd-retry-btn" class="fd-btn" style="background: rgba(220,53,69,0.2); border-color: rgba(220,53,69,0.5); color: #d9534f; margin-left: 10px;">
     {'Retry %s failed images'|translate|sprintf:$FD_FAILED_IMAGES}
   </button>

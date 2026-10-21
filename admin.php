@@ -781,6 +781,7 @@ $template->assign(array(
   'FD_TOTAL_IMAGES' => $total_images,
   'FD_HASHED_IMAGES' => $hashed_images,
   'FD_FAILED_IMAGES' => $failed_images,
+  'FD_FAILED_PERCENT' => ($total_images > 0) ? ($failed_images / $total_images) * 100 : 0,
   'FD_ACTION_URL' => FIND_DUPLICATES_ADMIN,
   'PWG_TOKEN' => get_pwg_token(),
   'FD_PAGE_NAME' => isset($_GET['page']) ? $_GET['page'] : 'plugin-' . FIND_DUPLICATES_ID,
