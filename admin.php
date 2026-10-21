@@ -88,7 +88,8 @@ if (isset($_GET['action']) && $_GET['action'] == 'scan')
   $hashed_query = '
     SELECT COUNT(h.image_id) AS c
     FROM ' . FIND_DUPLICATES_TABLE . ' h
-    INNER JOIN ' . IMAGES_TABLE . ' i ON h.image_id = i.id';
+    INNER JOIN ' . IMAGES_TABLE . ' i ON h.image_id = i.id
+    WHERE h.phash IS NOT NULL';
   $hashed_row = pwg_db_fetch_assoc(pwg_query($hashed_query));
   $hashed_images = (int)$hashed_row['c'];
   
@@ -308,7 +309,8 @@ $total_images = (int)$total_row['c'];
 $hashed_query = '
   SELECT COUNT(h.image_id) AS c
   FROM ' . FIND_DUPLICATES_TABLE . ' h
-  INNER JOIN ' . IMAGES_TABLE . ' i ON h.image_id = i.id';
+  INNER JOIN ' . IMAGES_TABLE . ' i ON h.image_id = i.id
+  WHERE h.phash IS NOT NULL';
 $hashed_row = pwg_db_fetch_assoc(pwg_query($hashed_query));
 $hashed_images = (int)$hashed_row['c'];
 
