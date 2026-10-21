@@ -1,7 +1,7 @@
 <?php
 /*
 Plugin Name: Find Duplicates
-Version: 1.1.4a
+Version: 1.1.5
 Description: Tool for finding duplicate and similar images (pHash/dHash/time).
 Plugin URI: http://piwigo.org/ext/extension_view.php?eid=1123
 Author: Oban
