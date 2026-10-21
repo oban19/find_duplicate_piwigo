@@ -55,7 +55,7 @@
 .fd-modal-img-wrap { text-align: center; background: rgba(128,128,128,.1); padding: 15px; border-radius: 8px; border: 1px solid rgba(128,128,128,.3); max-width: 45%; flex-grow: 1; transition: opacity 0.3s ease, transform 0.3s ease, max-width 0.3s ease, padding 0.3s ease, margin 0.3s ease, border-width 0.3s ease, flex-grow 0.3s ease; transform-origin: top center; overflow: hidden; }
 .fd-modal-img-wrap.fd-collapsing { opacity: 0; transform: scale(0.8); max-width: 0; padding-left: 0; padding-right: 0; margin-left: 0; margin-right: 0; border-width: 0; flex-grow: 0.0001; }
 .fd-modal-img-wrap a { display: inline-block; position: relative; overflow: hidden; line-height: 0; }
-.fd-modal-img-wrap img { max-width: 100%; max-height: {$FD_IMAGE_SIZE}vh; object-fit: contain; border-radius: 4px; box-shadow: 0 2px 8px rgba(0,0,0,0.3); vertical-align: top; }
+.fd-modal-img-wrap img { max-width: 100%; max-height: 80vh; object-fit: contain; border-radius: 4px; box-shadow: 0 2px 8px rgba(0,0,0,0.3); vertical-align: top; }
 .fd-modal-img-wrap img.fd-zoom-active-cursor { cursor: crosshair; }
 
 .fd-zoom-lens {
@@ -269,10 +269,9 @@
           var sim = document.getElementById('fd-similarity-range') ? document.getElementById('fd-similarity-range').value : 100;
           var chk = document.getElementById('fd-same-album-chk');
           var sameAlbum = chk && chk.checked ? 1 : 0;
-          var imageSize = document.getElementById('fd-image-size-select') ? document.getElementById('fd-image-size-select').value : 80;
           // Do not carry over search and hidden states to avoid sticky confusion
           var actionUrl = "{$FD_ACTION_URL|escape:'javascript'}";
-          window.location.href = actionUrl + '&fd_mode=' + mode + '&similarity=' + sim + '&same_album=' + sameAlbum + '&fd_image_size=' + imageSize;
+          window.location.href = actionUrl + '&fd_mode=' + mode + '&similarity=' + sim + '&same_album=' + sameAlbum;
       });
   });
 })();
@@ -387,15 +386,6 @@ function scanChunk() {
     </label>
 
     <label>
-      {'Image size:'|translate}
-      <select id="fd-image-size-select" style="padding: 5px; border-radius: 4px; background: rgba(128,128,128,.1); color: inherit; border: 1px solid rgba(128,128,128,.4);">
-        <option value="50" {if $FD_IMAGE_SIZE == 50}selected{/if}>50 vh</option>
-        <option value="80" {if $FD_IMAGE_SIZE == 80}selected{/if}>80 vh</option>
-        <option value="100" {if $FD_IMAGE_SIZE == 100}selected{/if}>100 vh</option>
-      </select>
-    </label>
-
-    <label>
       {'Filter album:'|translate}
       <select id="fd-filter-album">
         <option value="0">{'-- All albums --'|translate}</option>
@@ -436,8 +426,7 @@ function scanChunk() {
       var timeInterval = document.getElementById('fd-time-interval-select').value;
 
       var filterAlbum = document.getElementById("fd-filter-album") ? document.getElementById("fd-filter-album").value : 0;
-      var imageSize = document.getElementById("fd-image-size-select") ? document.getElementById("fd-image-size-select").value : 80;
-      window.location.href = actionUrl + "&fd_mode=" + mode + "&similarity=" + sim + "&same_album=" + sameAlbum + "&fd_show_hidden=" + showHidden + "&fd_search_group=" + searchGroup + "&fd_time_interval=" + timeInterval + "&fd_filter_album=" + filterAlbum + "&fd_image_size=" + imageSize;
+      window.location.href = actionUrl + "&fd_mode=" + mode + "&similarity=" + sim + "&same_album=" + sameAlbum + "&fd_show_hidden=" + showHidden + "&fd_search_group=" + searchGroup + "&fd_time_interval=" + timeInterval + "&fd_filter_album=" + filterAlbum;
   }
 
   // Auto-submit when hidden checkbox is toggled
@@ -445,13 +434,6 @@ function scanChunk() {
   var filterAlbumSel = document.getElementById('fd-filter-album');
   if (filterAlbumSel) {
       filterAlbumSel.addEventListener('change', function() {
-          submitFilters();
-      });
-  }
-
-  var imageSizeSel = document.getElementById('fd-image-size-select');
-  if (imageSizeSel) {
-      imageSizeSel.addEventListener('change', function() {
           submitFilters();
       });
   }
@@ -515,9 +497,8 @@ function scanChunk() {
         var timeInterval = "{$FD_TIME_INTERVAL|escape:'javascript'}";
         var sortVal = this.value;
 
-        var imageSize = document.getElementById('fd-image-size-select') ? document.getElementById('fd-image-size-select').value : 80;
         var filterAlbum = document.getElementById("fd-filter-album") ? document.getElementById("fd-filter-album").value : 0;
-        window.location.href = actionUrl + "&fd_mode=" + mode + "&similarity=" + similarity + "&same_album=" + sameAlbum + "&fd_show_hidden=" + showHidden + "&fd_search_group=" + searchGroup + "&fd_time_interval=" + timeInterval + "&fd_filter_album=" + filterAlbum + "&fd_image_size=" + imageSize + "&sort=" + sortVal;
+        window.location.href = actionUrl + "&fd_mode=" + mode + "&similarity=" + similarity + "&same_album=" + sameAlbum + "&fd_show_hidden=" + showHidden + "&fd_search_group=" + searchGroup + "&fd_time_interval=" + timeInterval + "&fd_filter_album=" + filterAlbum + "&sort=" + sortVal;
       });
     </script>
 
@@ -558,19 +539,19 @@ function scanChunk() {
     {if $FD_TOTAL_PAGES > 1}
     <div class="fd-pagination">
       {if $FD_CURRENT_PAGE > 1}
-        <a href="{$FD_ACTION_URL}&fd_mode={$FD_MODE}&similarity={$FD_SIMILARITY}&same_album={$FD_SAME_ALBUM}&fd_show_hidden={$FD_SHOW_HIDDEN}&fd_search_group={$FD_SEARCH_GROUP|escape:'url'}&fd_time_interval={$FD_TIME_INTERVAL}&fd_image_size={$FD_IMAGE_SIZE}&sort={$FD_SORT}&p={$FD_CURRENT_PAGE-1}">{'Previous'|translate}</a>
+        <a href="{$FD_ACTION_URL}&fd_mode={$FD_MODE}&similarity={$FD_SIMILARITY}&same_album={$FD_SAME_ALBUM}&fd_show_hidden={$FD_SHOW_HIDDEN}&fd_search_group={$FD_SEARCH_GROUP|escape:'url'}&fd_time_interval={$FD_TIME_INTERVAL}&sort={$FD_SORT}&p={$FD_CURRENT_PAGE-1}">{'Previous'|translate}</a>
       {/if}
 
       {for $p=$FD_START_PAGE to $FD_END_PAGE}
         {if $p == $FD_CURRENT_PAGE}
           <span class="fd-current">{$p}</span>
         {else}
-          <a href="{$FD_ACTION_URL}&fd_mode={$FD_MODE}&similarity={$FD_SIMILARITY}&same_album={$FD_SAME_ALBUM}&fd_show_hidden={$FD_SHOW_HIDDEN}&fd_search_group={$FD_SEARCH_GROUP|escape:'url'}&fd_time_interval={$FD_TIME_INTERVAL}&fd_image_size={$FD_IMAGE_SIZE}&sort={$FD_SORT}&p={$p}">{$p}</a>
+          <a href="{$FD_ACTION_URL}&fd_mode={$FD_MODE}&similarity={$FD_SIMILARITY}&same_album={$FD_SAME_ALBUM}&fd_show_hidden={$FD_SHOW_HIDDEN}&fd_search_group={$FD_SEARCH_GROUP|escape:'url'}&fd_time_interval={$FD_TIME_INTERVAL}&sort={$FD_SORT}&p={$p}">{$p}</a>
         {/if}
       {/for}
 
       {if $FD_CURRENT_PAGE < $FD_TOTAL_PAGES}
-        <a href="{$FD_ACTION_URL}&fd_mode={$FD_MODE}&similarity={$FD_SIMILARITY}&same_album={$FD_SAME_ALBUM}&fd_show_hidden={$FD_SHOW_HIDDEN}&fd_search_group={$FD_SEARCH_GROUP|escape:'url'}&fd_time_interval={$FD_TIME_INTERVAL}&fd_image_size={$FD_IMAGE_SIZE}&sort={$FD_SORT}&p={$FD_CURRENT_PAGE+1}">{'Next'|translate}</a>
+        <a href="{$FD_ACTION_URL}&fd_mode={$FD_MODE}&similarity={$FD_SIMILARITY}&same_album={$FD_SAME_ALBUM}&fd_show_hidden={$FD_SHOW_HIDDEN}&fd_search_group={$FD_SEARCH_GROUP|escape:'url'}&fd_time_interval={$FD_TIME_INTERVAL}&sort={$FD_SORT}&p={$FD_CURRENT_PAGE+1}">{'Next'|translate}</a>
       {/if}
     </div>
     {/if}
