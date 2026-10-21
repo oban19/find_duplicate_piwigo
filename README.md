@@ -9,7 +9,7 @@ Find Duplicates is a plugin for [Piwigo](https://piwigo.org/) that helps you fin
 
 ## Installation
 
-1. Download the latest release from the [Piwigo Extension directory](https://piwigo.org/ext/) or this repository.
+1. Download the latest release from the [Piwigo Extension directory]([https://piwigo.org/ext/](https://piwigo.org/ext/index.php?eid=1123))
 2. Extract the downloaded archive into the `plugins/` directory of your Piwigo installation. The folder should be named `find_duplicates` (or similar depending on extraction, but must match the plugin ID).
 3. Log in to your Piwigo administration panel.
 4. Go to **Plugins > Manage**.
@@ -34,7 +34,7 @@ Find Duplicates to wtyczka dla galerii [Piwigo](https://piwigo.org/), która pom
 
 ## Instalacja
 
-1. Pobierz najnowszą wersję z [katalogu rozszerzeń Piwigo](https://piwigo.org/ext/) lub z tego repozytorium.
+1. Pobierz najnowszą wersję z [katalogu rozszerzeń Piwigo]([https://piwigo.org/ext/](https://piwigo.org/ext/index.php?eid=1123)).
 2. Rozpakuj pobrane archiwum do katalogu `plugins/` w Twojej instalacji Piwigo.
 3. Zaloguj się do panelu administracyjnego Piwigo.
 4. Przejdź do **Wtyczki > Zarządzaj**.
