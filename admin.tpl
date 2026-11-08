@@ -1054,6 +1054,17 @@ function scanChunk() {
     window.applyFdTheme();
   }
 
+  function setZoomLensOpacity(lens, zoomToggle, visible) {
+    var opacityVal = visible ? '1' : '0';
+    if (isSyncZoomActive) {
+      document.querySelectorAll('#fd-modal-images .fd-zoom-lens').forEach(function(l) {
+        l.style.opacity = opacityVal;
+      });
+    } else if (!visible || zoomToggle.classList.contains('active')) {
+      lens.style.opacity = opacityVal;
+    }
+  }
+
   function openModal(title, phash, images, groupEl) {
     if (typeof window.applyFdTheme === 'function') {
       window.applyFdTheme();
