@@ -89,3 +89,4 @@ $lang['Photo added to favorites (%s/%s). Mark all photos in the group to hide it
 $lang['Photo removed from favorites.'] = 'Usunięto zdjęcie z ulubionych.';
 $lang['All photos in the group are marked as favorites — the group has been hidden (available under the ★ filter).'] = 'Wszystkie zdjęcia w grupie oznaczono jako ulubione — grupa została ukryta (dostępna pod filtrem ★).';
 $lang['Group removed from hidden favorites and restored to the main duplicates list.'] = 'Grupa została przywrócona na główną listę duplikatów.';
+$lang['All groups on this page processed. Reloading list...'] = 'Wszystkie grupy z tej strony zostały przetworzone. Przeładowywanie listy...';
