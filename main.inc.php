@@ -104,9 +104,19 @@ function find_duplicates_on_delete($ids)
 {
   if (empty($ids)) return;
 
+  $clean_ids = array();
+  foreach ((array)$ids as $id) {
+    $int_id = (int)$id;
+    if ($int_id > 0) {
+      $clean_ids[$int_id] = $int_id;
+    }
+  }
+
+  if (empty($clean_ids)) return;
+
   $query = '
     DELETE FROM ' . FIND_DUPLICATES_TABLE . '
-    WHERE image_id IN (' . implode(',', $ids) . ')';
+    WHERE image_id IN (' . implode(',', $clean_ids) . ')';
   pwg_query($query);
 }
 
@@ -175,6 +185,13 @@ function find_duplicates_ensure_favorite_column($table_name = null)
     pwg_query("ALTER TABLE `" . $table_name . "` ADD COLUMN `is_favorite` tinyint(1) NOT NULL DEFAULT 0");
   }
 
+}
+
+// Helper: detect if image is a Motion Picture based on standard vendor naming conventions (Pixel, Samsung, etc.)
+function find_duplicates_is_motion_photo($filename, $title = '')
+{
+  $pattern = '/^((MVIMG_|MotionPhoto_).*\.(jpe?g|heic|heif|png|webp|avif)$|.*[\._-](MP|MotionPhoto)(\.(jpe?g|heic|heif|png|webp|avif))?$)/i';
+  return (preg_match($pattern, (string)$filename) || (!empty($title) && preg_match($pattern, (string)$title))) ? 1 : 0;
 }
 
 

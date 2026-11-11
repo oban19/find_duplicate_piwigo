@@ -36,6 +36,24 @@ class MainIncTest extends TestCase
         $this->assertMatchesRegularExpression($expectedPattern, $query, 'The query should delete elements by their IDs.');
     }
 
+    public function testFindDuplicatesOnDeleteWithMaliciousOrInvalidIds()
+    {
+        // Act with string containing SQL injection payload and invalid values
+        find_duplicates_on_delete(['1 OR 1=1', 'abc', -10, 0, 7]);
+
+        // Assert
+        $queries = get_captured_queries();
+        $this->assertCount(1, $queries, 'Query should be executed for sanitized positive integers.');
+        $query = preg_replace('/\s+/', ' ', $queries[0]);
+        $this->assertSame('DELETE FROM piwigo_find_duplicates_hashes WHERE image_id IN (1,7)', $query);
+    }
+
+    public function testFindDuplicatesOnDeleteWithAllInvalidIds()
+    {
+        find_duplicates_on_delete(['abc', 'xyz', -1, 0]);
+        $this->assertEmpty(get_captured_queries(), 'No queries should be executed if no positive integers found.');
+    }
+
     public function testFindDuplicatesSetGroupFavoriteMarkAll()
     {
         $updated = find_duplicates_set_group_favorite('10,20,10,invalid,-5', 1);
@@ -93,5 +111,25 @@ class MainIncTest extends TestCase
         $queries = get_captured_queries();
         $this->assertCount(1, $queries);
         $this->assertSame("SHOW COLUMNS FROM `piwigo_find_duplicates_hashes` LIKE 'is_favorite'", $queries[0]);
+    }
+
+    public function testFindDuplicatesIsMotionPhoto()
+    {
+        // Positive matches (Pixel, Samsung, Google Camera)
+        $this->assertSame(1, find_duplicates_is_motion_photo('PXL_20230501_123456.MP.jpg'));
+        $this->assertSame(1, find_duplicates_is_motion_photo('PXL_20230501_123456.PORTRAIT.MP.jpg'));
+        $this->assertSame(1, find_duplicates_is_motion_photo('PXL_20230501_123456.MP'));
+        $this->assertSame(1, find_duplicates_is_motion_photo('MVIMG_20190101_120000.jpg'));
+        $this->assertSame(1, find_duplicates_is_motion_photo('20230101_120000_MotionPhoto.jpg'));
+        $this->assertSame(1, find_duplicates_is_motion_photo('MotionPhoto_20230101_120000.jpg'));
+        $this->assertSame(1, find_duplicates_is_motion_photo('custom_name.jpg', 'PXL_20230501_123456.MP'));
+
+        // Negative matches (Videos, Audio, regular photos)
+        $this->assertSame(0, find_duplicates_is_motion_photo('video.mp4'));
+        $this->assertSame(0, find_duplicates_is_motion_photo('sample.MP4'));
+        $this->assertSame(0, find_duplicates_is_motion_photo('audio.mp3'));
+        $this->assertSame(0, find_duplicates_is_motion_photo('camping.jpg'));
+        $this->assertSame(0, find_duplicates_is_motion_photo('my_photo.png'));
+        $this->assertSame(0, find_duplicates_is_motion_photo('PXL_20230501_123456.MP.mp4'));
     }
 }
