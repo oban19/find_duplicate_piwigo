@@ -830,6 +830,7 @@ function scanChunk() {
   var closeBtn = document.getElementById('fd-modal-close');
   var groups = document.querySelectorAll('.fd-group');
   var isSyncZoomActive = false;
+  var isReloading = false;
 
   // Format Bytes Helper for JS
   function formatBytes(bytes) {
@@ -885,11 +886,30 @@ function scanChunk() {
     }, 300); // Wait for transition
   }
 
+  function checkRemainingGroupsAndReload() {
+    if (isReloading) return;
+    var remaining = 0;
+    groups.forEach(function(el) {
+      if (el.style.display !== 'none' && !el.classList.contains('fd-fading-out')) {
+        remaining++;
+      }
+    });
+
+    if (remaining === 0) {
+      isReloading = true;
+      showToast("{'All groups on this page processed. Reloading list...'|translate|escape:'javascript'}");
+      setTimeout(function() {
+        window.location.reload();
+      }, 600);
+    }
+  }
+
   function fadeOutGroupAndCloseModal(groupEl) {
     closeModal();
     groupEl.classList.add('fd-fading-out');
     setTimeout(function() {
       groupEl.style.display = 'none';
+      checkRemainingGroupsAndReload();
     }, 300);
   }
 
