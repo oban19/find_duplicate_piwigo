@@ -138,8 +138,9 @@
 #fd-main .fd-progress-bar { height: 100%; background: rgba(90,160,90,.8); width: 0%; transition: width 1s linear; }
 #fd-main .fd-group { border: 1px solid rgba(128,128,128,.3); margin-bottom: 20px; padding: 15px; border-radius: 10px; background: rgba(128,128,128,.04); }
 #fd-main .fd-group h4 { margin-top: 0; color: inherit; }
-#fd-main .fd-img-wrap { width: 150px; text-align: center; position: relative; }
-#fd-main .fd-img-wrap img { max-width: 100%; height: auto; border: 1px solid rgba(128,128,128,.4); border-radius: 6px; }
+#fd-main .fd-img-wrap { width: 150px; align-self: flex-start; min-height: 60px; text-align: center; position: relative; }
+#fd-main .fd-img-wrap img { display: block; width: 100%; height: auto; box-sizing: border-box; border: 1px solid rgba(128,128,128,.4); border-radius: 6px; }
+#fd-main .fd-thumb-fav-star { color: #ffc107; font-size: 24px; line-height: 1; position: absolute; top: 4px; left: 6px; z-index: 3; text-shadow: 1px 1px 3px rgba(0,0,0,0.85); pointer-events: none; }
 #fd-main .fd-img-wrap .fd-img-info { font-size: 11px; margin-top: 5px; word-break: break-all; opacity: 0.8; }
 #fd-main .fd-toolbar {
   display: flex; flex-wrap: wrap; gap: 15px; align-items: center;
@@ -759,11 +760,11 @@ function scanChunk() {
               <button type="button" class="fd-btn fd-btn-sm fd-open-group-btn">{'Open group'|translate}</button>
             </span>
           </h4>
-          <div style="display: flex; gap: 15px; flex-wrap: wrap; pointer-events: none; opacity: 0.8; clear: both; padding-top: 10px;">
+          <div style="display: flex; align-items: flex-start; gap: 15px; flex-wrap: wrap; pointer-events: none; opacity: 0.8; clear: both; padding-top: 10px;">
             {foreach from=$group.IMAGES item=img}
               <div class="fd-img-wrap" data-id="{$img.ID}">
                 <div class="fd-img-loader"></div>
-                <img src="{$img.FULL_URL}" class="fd-lazy-img-element" onload="this.classList.add('loaded'); this.previousElementSibling.style.display='none';" alt="{$img.NAME|escape:'html'}">
+                <img src="{$img.THUMB_URL|default:$img.FULL_URL|escape:'html'}" loading="lazy" class="fd-lazy-img-element" onload="this.classList.add('loaded'); this.previousElementSibling.style.display='none';" onerror="this.previousElementSibling.style.display='none';" alt="{$img.NAME|default:''|escape:'html'}">
                 <div style="position: absolute; bottom: 5px; right: 5px; display: flex; gap: 3px; z-index: 3;">
                   {if $img.ALBUM_COUNT|default:0 > 1}
                     <span style="background: rgba(0,0,0,0.6); color: white; padding: 2px 5px; border-radius: 4px; font-size: 10px;" title="{'Belongs to multiple albums'|translate}">📁 {$img.ALBUM_COUNT}</span>
@@ -776,7 +777,7 @@ function scanChunk() {
                   {/if}
                 </div>
                 {if $img.IS_FAVORITE}
-                <div class="fd-thumb-fav-star" style="color: #ffc107; font-size: 24px; position: absolute; top: -5px; left: 5px; text-shadow: 1px 1px 3px rgba(0,0,0,0.8);">★</div>
+                <div class="fd-thumb-fav-star" style="color: #ffc107; font-size: 24px; line-height: 1; position: absolute; top: 4px; left: 6px; z-index: 3; text-shadow: 1px 1px 3px rgba(0,0,0,0.85);">★</div>
                 {/if}
               </div>
             {/foreach}
@@ -826,11 +827,53 @@ function scanChunk() {
 
 <script type="text/javascript">
 (function(){
+  var ZOOM_FACTOR = 5;
   var modal = document.getElementById('fd-modal');
   var closeBtn = document.getElementById('fd-modal-close');
   var groups = document.querySelectorAll('.fd-group');
   var isSyncZoomActive = false;
   var isReloading = false;
+
+  // CSS url("...") Escape Helper for filenames with quotes, apostrophes, backslashes, or parentheses
+  function escapeCssUrl(url) {
+    return String(url || '')
+      .replace(/\\/g, '\\\\')
+      .replace(/"/g, '\\"')
+      .replace(/'/g, "\\'")
+      .replace(/\(/g, '\\(')
+      .replace(/\)/g, '\\)');
+  }
+
+  function setZoomLensOpacity(lens, zoomToggle, visible) {
+    var opacityVal = visible ? '1' : '0';
+    if (isSyncZoomActive) {
+      document.querySelectorAll('#fd-modal-images .fd-zoom-lens').forEach(function(l) {
+        l.style.opacity = opacityVal;
+      });
+    } else if (!visible || zoomToggle.classList.contains('active')) {
+      lens.style.opacity = opacityVal;
+    }
+  }
+
+  function updateZoomLensPosition(wrapper, currImage, currLens, percX, percY) {
+    var cRect = currImage.getBoundingClientRect();
+    if (!cRect.width || !cRect.height) return;
+
+    var wRect = wrapper.getBoundingClientRect();
+    var cX = percX * cRect.width;
+    var cY = percY * cRect.height;
+
+    currLens.style.left = ((cRect.left - wRect.left) + cX) + 'px';
+    currLens.style.top = ((cRect.top - wRect.top) + cY) + 'px';
+
+    var lensW = currLens.offsetWidth || 225;
+    var lensH = currLens.offsetHeight || 225;
+    currLens.style.backgroundSize = (cRect.width * ZOOM_FACTOR) + 'px ' + (cRect.height * ZOOM_FACTOR) + 'px';
+
+    var bgX = (lensW / 2) - (cX * ZOOM_FACTOR);
+    var bgY = (lensH / 2) - (cY * ZOOM_FACTOR);
+    currLens.style.backgroundPosition = bgX + 'px ' + bgY + 'px';
+  }
 
   // HTML Escape Helper to prevent XSS
   function escapeHtml(str) {
@@ -961,7 +1004,7 @@ function scanChunk() {
       if (!existingStar) {
         var starDiv = document.createElement('div');
         starDiv.className = 'fd-thumb-fav-star';
-        starDiv.style.cssText = 'color: #ffc107; font-size: 24px; position: absolute; top: -5px; left: 5px; text-shadow: 1px 1px 3px rgba(0,0,0,0.8);';
+        starDiv.style.cssText = 'color: #ffc107; font-size: 24px; line-height: 1; position: absolute; top: 4px; left: 6px; z-index: 3; text-shadow: 1px 1px 3px rgba(0,0,0,0.85);';
         starDiv.innerText = '★';
         wrap.appendChild(starDiv);
       }
@@ -1074,17 +1117,6 @@ function scanChunk() {
     window.applyFdTheme();
   }
 
-  function setZoomLensOpacity(lens, zoomToggle, visible) {
-    var opacityVal = visible ? '1' : '0';
-    if (isSyncZoomActive) {
-      document.querySelectorAll('#fd-modal-images .fd-zoom-lens').forEach(function(l) {
-        l.style.opacity = opacityVal;
-      });
-    } else if (!visible || zoomToggle.classList.contains('active')) {
-      lens.style.opacity = opacityVal;
-    }
-  }
-
   function openModal(title, phash, images, groupEl) {
     if (typeof window.applyFdTheme === 'function') {
       window.applyFdTheme();
@@ -1157,26 +1189,31 @@ function scanChunk() {
       var link = document.createElement('a');
       link.href = img.URL;
       link.target = '_blank';
-      link.style.position = 'relative';
-      link.style.display = 'block';
+      link.style.minWidth = '150px';
       link.style.minHeight = '150px';
 
       var loader = document.createElement('div');
       loader.className = 'fd-img-loader';
 
       var image = document.createElement('img');
-      image.src = img.FULL_URL;
       image.className = 'fd-lazy-img-element';
       image.onload = function() {
           this.classList.add('loaded');
           loader.style.display = 'none';
+          link.style.minWidth = '';
+          link.style.minHeight = '';
       };
-      image.alt = img.NAME;
+      image.onerror = function() {
+          loader.style.display = 'none';
+          link.style.minWidth = '';
+          link.style.minHeight = '';
+      };
+      image.src = img.FULL_URL;
+      image.alt = img.NAME || '';
 
       var lens = document.createElement('div');
       lens.className = 'fd-zoom-lens';
-      lens.style.backgroundImage = "url('" + img.FULL_URL + "')";
-      lens.style.backgroundSize = "500%"; // 5x zoom for detailed inspection
+      lens.style.backgroundImage = 'url("' + escapeCssUrl(img.FULL_URL) + '")';
 
       var zoomToggle = document.createElement('div');
       zoomToggle.className = 'fd-zoom-toggle-btn';
@@ -1203,6 +1240,10 @@ function scanChunk() {
 
       var overlay = document.createElement('div');
       overlay.className = 'fd-modal-img-actions-overlay';
+      overlay.onclick = function(e) {
+          e.preventDefault();
+          e.stopPropagation();
+      };
 
       var favBtn = document.createElement('button');
       var isFav = img.IS_FAVORITE == 1;
@@ -1293,7 +1334,16 @@ function scanChunk() {
       });
 
       link.addEventListener('mousemove', function(e) {
+        if (e.target.closest('.fd-modal-img-actions-overlay') || e.target.closest('.fd-zoom-toggle-btn')) {
+            setZoomLensOpacity(lens, zoomToggle, false);
+            return;
+        }
+
         var rect = image.getBoundingClientRect();
+        if (!rect.width || !rect.height) {
+            setZoomLensOpacity(lens, zoomToggle, false);
+            return;
+        }
 
         var x = e.clientX - rect.left;
         var y = e.clientY - rect.top;
@@ -1317,8 +1367,7 @@ function scanChunk() {
             hideLens = true;
         }
 
-        // Also fallback to direct target check just in case
-        if (hideLens || e.target.closest('.fd-modal-img-actions-overlay') || e.target.closest('.fd-zoom-toggle-btn')) {
+        if (hideLens) {
             setZoomLensOpacity(lens, zoomToggle, false);
             return;
         }
@@ -1341,21 +1390,11 @@ function scanChunk() {
                 var currLens = wrapper.querySelector('.fd-zoom-lens');
 
                 if (currImage && currLens) {
-                    var cRect = currImage.getBoundingClientRect();
-                    var cX = percX * cRect.width;
-                    var cY = percY * cRect.height;
-
-                    currLens.style.left = cX + 'px';
-                    currLens.style.top = cY + 'px';
-                    currLens.style.backgroundPosition = (percX * 100) + '% ' + (percY * 100) + '%';
+                    updateZoomLensPosition(wrapper, currImage, currLens, percX, percY);
                 }
             });
         } else {
-             var cX = percX * rect.width;
-             var cY = percY * rect.height;
-             lens.style.left = cX + 'px';
-             lens.style.top = cY + 'px';
-             lens.style.backgroundPosition = (percX * 100) + '% ' + (percY * 100) + '%';
+            updateZoomLensPosition(link, image, lens, percX, percY);
         }
       });
     });

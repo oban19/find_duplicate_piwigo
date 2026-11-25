@@ -80,27 +80,8 @@ if (isset($_GET['action']) && $_GET['action'] == 'scan')
   {
     $hash = 'failed';
 
-    // Optimized hash generation using thumbnail derivative (instead of slow original file)
-    $thumb_path = '';
-    if (class_exists('SrcImage') && class_exists('DerivativeImage') && class_exists('ImageStdParams')) {
-      try {
-        $src = new SrcImage($row);
-        $params = ImageStdParams::get_by_type(IMG_SQUARE);
-        $thumb = new DerivativeImage($params, $src);
-        $thumb_path_rel = $thumb->get_path();
-        $thumb_path_abs = PHPWG_ROOT_PATH . $thumb_path_rel;
-
-        if (file_exists($thumb_path_rel)) {
-          $thumb_path = $thumb_path_rel;
-        } else if (file_exists($thumb_path_abs)) {
-          $thumb_path = $thumb_path_abs;
-        }
-      } catch (Throwable $e) {
-        // Ignore derivative generation errors
-      }
-    }
-
-    $filepath = (!empty($thumb_path)) ? $thumb_path : PHPWG_ROOT_PATH . $row['path'];
+    // Optimized hash generation using shared thumbnail derivative helper (instead of slow original file)
+    $filepath = find_duplicates_get_hash_source_path($row);
 
     if (file_exists($filepath))
     {
@@ -115,14 +96,14 @@ if (isset($_GET['action']) && $_GET['action'] == 'scan')
     $processed++;
 
     if (count($insert_values) >= $batch_size) {
-      pwg_query("REPLACE INTO " . FIND_DUPLICATES_TABLE . " (image_id, phash) VALUES " . implode(", ", $insert_values));
+      pwg_query("INSERT INTO " . FIND_DUPLICATES_TABLE . " (image_id, phash) VALUES " . implode(", ", $insert_values) . " ON DUPLICATE KEY UPDATE phash = VALUES(phash)");
       $insert_values = array();
     }
   }
 
   // Batch insert remaining records
   if (!empty($insert_values)) {
-    pwg_query("REPLACE INTO " . FIND_DUPLICATES_TABLE . " (image_id, phash) VALUES " . implode(", ", $insert_values));
+    pwg_query("INSERT INTO " . FIND_DUPLICATES_TABLE . " (image_id, phash) VALUES " . implode(", ", $insert_values) . " ON DUPLICATE KEY UPDATE phash = VALUES(phash)");
   }
   
   // Get counts to return progress
@@ -147,6 +128,7 @@ if (isset($_GET['action']) && $_GET['action'] == 'retry_failed') {
 
   $query = 'UPDATE ' . FIND_DUPLICATES_TABLE . ' SET phash = NULL WHERE phash = \'failed\'';
   pwg_query($query);
+  find_duplicates_clear_cache();
 
   echo json_encode(array('status' => 'ok'));
   die();
@@ -368,27 +350,28 @@ $can_show_duplicates = ($fd_mode == 'time' || $is_scan_complete);
 if ($can_show_duplicates)
 {
   // Cache Setup
-  $cache_dir = PHPWG_ROOT_PATH . '_data/find_duplicates_cache';
-  if (!is_dir($cache_dir)) {
-    mkdir($cache_dir, 0755, true);
-  }
-  if (!file_exists($cache_dir . '/index.htm')) {
-    @file_put_contents($cache_dir . '/index.htm', '');
-  }
-  
+  $cache_dir = find_duplicates_ensure_cache_dir();
+  $cache_secret = find_duplicates_get_cache_secret();
+
   // Cache key only depends on the heavy grouping parameters.
-  // We use v11 to introduce FULL_URL and THUMB_URL to fix file:/// path security errors in the browser.
-  $cache_filename = $cache_dir . '/cache_v11_s' . $similarity_limit . '_a' . $same_album . '_h' . $hashed_images . '_m' . $fd_mode . '_t' . $fd_time_interval . '.json';
-  
+  // We use v12 to introduce THUMB_URL, protected cache directory, and secret cache suffix.
+  $cache_filename = $cache_dir . '/cache_v12_s' . $similarity_limit . '_a' . $same_album . '_h' . $hashed_images . '_m' . $fd_mode . '_t' . $fd_time_interval . '_' . $cache_secret . '.json';
+
+  $cache_valid = false;
   if (file_exists($cache_filename)) {
     // Load from cache
     $cached_data = @file_get_contents($cache_filename);
-    if ($cached_data) {
-      $duplicates = json_decode($cached_data, true);
+    if ($cached_data !== false && $cached_data !== '') {
+      $decoded = json_decode($cached_data, true);
+      if (is_array($decoded) && json_last_error() === JSON_ERROR_NONE) {
+        $duplicates = $decoded;
+        $cache_valid = true;
+      }
     }
-  } 
-  
-  if (empty($duplicates) && !file_exists($cache_filename)) {
+  }
+
+  if (!$cache_valid) {
+    $duplicates = array();
     // Generate data
     $max_diff = round((100 - $similarity_limit) / 100 * 64);
     
@@ -424,11 +407,25 @@ if ($can_show_duplicates)
 
         // Generate proper web URLs to prevent "file:///" errors in browsers
         $full_url = get_root_url() . $row['path'];
+        $thumb_url = $full_url;
+        if (class_exists('SrcImage') && class_exists('DerivativeImage')) {
+          try {
+            $src_img = new SrcImage($row);
+            $deriv_thumb = new DerivativeImage(IMG_THUMB, $src_img);
+            $generated_thumb_url = $deriv_thumb->get_url();
+            if (!empty($generated_thumb_url)) {
+              $thumb_url = $generated_thumb_url;
+            }
+          } catch (Throwable $e) {
+            // Fallback to full_url
+          }
+        }
 
         $images_data[$img_id] = array(
           'ID' => $row['id'],
           'PATH' => $row['path'],
           'FULL_URL' => $full_url,
+          'THUMB_URL' => $thumb_url,
           'FILE' => $row['file'],
           'NAME' => $row['name'] ? $row['name'] : $row['file'],
           'URL' => get_root_url() . 'admin.php?page=photo-' . $row['id'],
@@ -448,45 +445,7 @@ if ($can_show_duplicates)
     $groups = array();
     
     if ($fd_mode == 'time') {
-      $current_group = array();
-      $last_time = null;
-      
-      foreach ($images_data as $img_id => $img_data) {
-        if (empty($img_data['DATE_CREATION'])) continue; // Skip images without date
-        
-        $current_time = strtotime($img_data['DATE_CREATION']);
-        
-        if ($last_time !== null && ($current_time - $last_time) <= $fd_time_interval) {
-          // If in the same album check is required
-          if ($same_album && !empty($current_group)) {
-             $lead_id = $current_group[0];
-             // ⚡ Bolt Optimization: Use array_intersect_key instead of array_intersect(array_keys())
-             // avoids 2 array_keys() calls per comparison and is ~11x faster.
-             $shared_albums = array_intersect_key($images_data[$lead_id]['ALBUMS'], $img_data['ALBUMS']);
-             if (empty($shared_albums)) {
-                 // Break the group if not sharing album
-                 if (count($current_group) > 1) {
-                   $groups[] = $current_group;
-                 }
-                 $current_group = array($img_id);
-                 $last_time = $current_time;
-                 continue;
-             }
-          }
-          $current_group[] = $img_id;
-        } else {
-          // Time difference too large, close current group and start new one
-          if (count($current_group) > 1) {
-            $groups[] = $current_group;
-          }
-          $current_group = array($img_id);
-        }
-        $last_time = $current_time;
-      }
-      // Add the last group if any
-      if (count($current_group) > 1) {
-        $groups[] = $current_group;
-      }
+      $groups = find_duplicates_group_by_time($images_data, $fd_time_interval, $same_album);
     } else { // 'visual' mode
       $processed_ids = array();
       // O(N^2) -> O(N^2/2) by skipping already compared pairs
@@ -565,9 +524,9 @@ if ($can_show_duplicates)
 
         $group_total_bytes += $img_data['FILE_SIZE_BYTES'];
 
-        if (!empty($img_data['DATE_CREATION'])) {
+        if (!empty($img_data['DATE_CREATION']) && strpos($img_data['DATE_CREATION'], '0000-00-00') !== 0) {
           $ts = strtotime($img_data['DATE_CREATION']);
-          if ($ts !== false) {
+          if ($ts !== false && $ts > 0) {
             if ($oldest_date === null || $ts < $oldest_date) {
               $oldest_date = $ts;
             }

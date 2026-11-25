@@ -93,6 +93,12 @@ CREATE TABLE IF NOT EXISTS `' . $this->table . '` (
           @unlink($file);
         }
       }
+      if (file_exists($cache_dir . '/.htaccess')) {
+        @unlink($cache_dir . '/.htaccess');
+      }
+      if (file_exists($cache_dir . '/index.htm')) {
+        @unlink($cache_dir . '/index.htm');
+      }
       @rmdir($cache_dir);
     }
   }
