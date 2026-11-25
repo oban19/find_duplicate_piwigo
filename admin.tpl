@@ -138,8 +138,9 @@
 #fd-main .fd-progress-bar { height: 100%; background: rgba(90,160,90,.8); width: 0%; transition: width 1s linear; }
 #fd-main .fd-group { border: 1px solid rgba(128,128,128,.3); margin-bottom: 20px; padding: 15px; border-radius: 10px; background: rgba(128,128,128,.04); }
 #fd-main .fd-group h4 { margin-top: 0; color: inherit; }
-#fd-main .fd-img-wrap { width: 150px; text-align: center; position: relative; }
-#fd-main .fd-img-wrap img { max-width: 100%; height: auto; border: 1px solid rgba(128,128,128,.4); border-radius: 6px; }
+#fd-main .fd-img-wrap { width: 150px; align-self: flex-start; min-height: 60px; text-align: center; position: relative; }
+#fd-main .fd-img-wrap img { display: block; width: 100%; height: auto; box-sizing: border-box; border: 1px solid rgba(128,128,128,.4); border-radius: 6px; }
+#fd-main .fd-thumb-fav-star { color: #ffc107; font-size: 24px; line-height: 1; position: absolute; top: 4px; left: 6px; z-index: 3; text-shadow: 1px 1px 3px rgba(0,0,0,0.85); pointer-events: none; }
 #fd-main .fd-img-wrap .fd-img-info { font-size: 11px; margin-top: 5px; word-break: break-all; opacity: 0.8; }
 #fd-main .fd-toolbar {
   display: flex; flex-wrap: wrap; gap: 15px; align-items: center;
@@ -759,7 +760,7 @@ function scanChunk() {
               <button type="button" class="fd-btn fd-btn-sm fd-open-group-btn">{'Open group'|translate}</button>
             </span>
           </h4>
-          <div style="display: flex; gap: 15px; flex-wrap: wrap; pointer-events: none; opacity: 0.8; clear: both; padding-top: 10px;">
+          <div style="display: flex; align-items: flex-start; gap: 15px; flex-wrap: wrap; pointer-events: none; opacity: 0.8; clear: both; padding-top: 10px;">
             {foreach from=$group.IMAGES item=img}
               <div class="fd-img-wrap" data-id="{$img.ID}">
                 <div class="fd-img-loader"></div>
@@ -776,7 +777,7 @@ function scanChunk() {
                   {/if}
                 </div>
                 {if $img.IS_FAVORITE}
-                <div class="fd-thumb-fav-star" style="color: #ffc107; font-size: 24px; position: absolute; top: -5px; left: 5px; text-shadow: 1px 1px 3px rgba(0,0,0,0.8);">★</div>
+                <div class="fd-thumb-fav-star" style="color: #ffc107; font-size: 24px; line-height: 1; position: absolute; top: 4px; left: 6px; z-index: 3; text-shadow: 1px 1px 3px rgba(0,0,0,0.85);">★</div>
                 {/if}
               </div>
             {/foreach}
@@ -1003,7 +1004,7 @@ function scanChunk() {
       if (!existingStar) {
         var starDiv = document.createElement('div');
         starDiv.className = 'fd-thumb-fav-star';
-        starDiv.style.cssText = 'color: #ffc107; font-size: 24px; position: absolute; top: -5px; left: 5px; text-shadow: 1px 1px 3px rgba(0,0,0,0.8);';
+        starDiv.style.cssText = 'color: #ffc107; font-size: 24px; line-height: 1; position: absolute; top: 4px; left: 6px; z-index: 3; text-shadow: 1px 1px 3px rgba(0,0,0,0.85);';
         starDiv.innerText = '★';
         wrap.appendChild(starDiv);
       }
