@@ -39,7 +39,14 @@ function find_duplicates_compute_dhash($filepath)
   $height = 8;
   
   $thumb = imagecreatetruecolor($width, $height);
-  if (!$thumb) return null;
+  if (!$thumb) {
+    if (is_resource($img)) {
+      imagedestroy($img);
+    } else {
+      unset($img);
+    }
+    return null;
+  }
 
   // Convert to grayscale and resize to 9x8
   imagefilter($img, IMG_FILTER_GRAYSCALE);
@@ -59,8 +66,16 @@ function find_duplicates_compute_dhash($filepath)
     }
   }
 
-unset($thumb);
-unset($img);
+  if (is_resource($thumb)) {
+    imagedestroy($thumb);
+  } else {
+    unset($thumb);
+  }
+  if (is_resource($img)) {
+    imagedestroy($img);
+  } else {
+    unset($img);
+  }
 
   return $hash; // 64-bit binary string
 }
@@ -114,10 +129,13 @@ function find_duplicates_on_delete($ids)
 
   if (empty($clean_ids)) return;
 
-  $query = '
-    DELETE FROM ' . FIND_DUPLICATES_TABLE . '
-    WHERE image_id IN (' . implode(',', $clean_ids) . ')';
-  pwg_query($query);
+  $chunks = array_chunk($clean_ids, 500);
+  foreach ($chunks as $chunk) {
+    $query = '
+      DELETE FROM ' . FIND_DUPLICATES_TABLE . '
+      WHERE image_id IN (' . implode(',', $chunk) . ')';
+    pwg_query($query);
+  }
 }
 
 // Batch set favorite status for a group of image IDs
@@ -170,6 +188,7 @@ function find_duplicates_clear_cache($remove_dir = false)
   }
 
   if ($remove_dir) {
+    @unlink($cache_dir . '/index.htm');
     @rmdir($cache_dir);
   }
 }

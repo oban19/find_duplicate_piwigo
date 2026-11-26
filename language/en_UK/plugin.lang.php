@@ -67,6 +67,7 @@ $lang['Unknown'] = 'Unknown';
 $lang['File size'] = 'File size';
 $lang['Albums:'] = 'Albums:';
 $lang['Album(s)'] = 'Album(s)';
+$lang['Motion'] = 'Motion';
 $lang['Photo ID'] = 'Photo ID';
 $lang['File name'] = 'File name';
 $lang['Error:'] = 'Error:';

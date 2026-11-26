@@ -93,6 +93,7 @@ CREATE TABLE IF NOT EXISTS `' . $this->table . '` (
           @unlink($file);
         }
       }
+      @unlink($cache_dir . '/index.htm');
       @rmdir($cache_dir);
     }
   }
