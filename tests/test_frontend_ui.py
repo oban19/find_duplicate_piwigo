@@ -92,6 +92,7 @@ def render_admin_tpl() -> str:
         "{$FD_SIMILARITY|default:100|escape:'javascript'}": "100",
         "{$FD_SIMILARITY|default:100}": "100",
         "{$FD_SAME_ALBUM|default:0|escape:'javascript'}": "0",
+        "{$FD_SAME_ALBUM|default:0}": "0",
         "{$FD_SHOW_HIDDEN|default:0|escape:'javascript'}": "0",
         "{$FD_SEARCH_GROUP|default:''|escape:'url'}": "",
         "{$FD_SEARCH_GROUP|default:''|escape:'html'}": "",
@@ -156,7 +157,7 @@ def render_admin_tpl() -> str:
 
 def run_tests() -> None:
     html = render_admin_tpl()
-    api_calls: list[str] = []
+    api_calls: list[dict[str, str]] = []
     nav_urls: list[str] = []
     page_errors: list[str] = []
     scan_step = {"count": 0}
@@ -169,13 +170,15 @@ def run_tests() -> None:
 
         def handle_route(route):
             url = route.request.url
+            method = route.request.method
+            body = route.request.post_data or ""
             if url.startswith("http://localhost/admin.php") and "action=" not in url:
                 if url != BASE_URL:
                     nav_urls.append(url)
                 route.fulfill(status=200, content_type="text/html", body=html)
                 return
             if "action=scan" in url:
-                api_calls.append(url)
+                api_calls.append({"method": method, "url": url, "body": body})
                 scan_step["count"] += 1
                 done = scan_step["count"] >= 2
                 route.fulfill(
@@ -189,19 +192,19 @@ def run_tests() -> None:
                 )
                 return
             if "action=retry_failed" in url:
-                api_calls.append(url)
+                api_calls.append({"method": method, "url": url, "body": body})
                 route.fulfill(status=200, content_type="application/json", body=json.dumps({"status": "ok"}))
                 return
             if "action=toggle_favorite" in url:
-                api_calls.append(url)
+                api_calls.append({"method": method, "url": url, "body": body})
                 route.fulfill(status=200, content_type="application/json", body=json.dumps({"status": "ok", "is_favorite": 1}))
                 return
             if "action=set_group_favorite" in url:
-                api_calls.append(url)
+                api_calls.append({"method": method, "url": url, "body": body})
                 route.fulfill(status=200, content_type="application/json", body=json.dumps({"status": "ok", "is_favorite": 1, "updated_ids": [101, 102]}))
                 return
             if "action=delete_image" in url:
-                api_calls.append(url)
+                api_calls.append({"method": method, "url": url, "body": body})
                 route.fulfill(
                     status=200,
                     content_type="application/json",
@@ -233,17 +236,19 @@ def run_tests() -> None:
             for u in nav_urls
         ), f"Expected tab navigation with pwg_token, got: {nav_urls}"
 
-        # 3. Filters: warning message, similarity slider, and submitFilters() preserving sort + pwg_token
+        # 3. Filters: warning message only for visual + similarity < 100 + !same_album, and submitFilters() preserving sort + pwg_token
         page.goto(BASE_URL)
-        assert page.locator("#fd-warning-msg").is_visible()  # same_album is unchecked by default
-        page.check("#fd-same-album-chk")
-        assert not page.locator("#fd-warning-msg").is_visible()
-        page.uncheck("#fd-same-album-chk")
-        assert page.locator("#fd-warning-msg").is_visible()
+        assert not page.locator("#fd-warning-msg").is_visible()  # similarity=100 uses O(N) fast-path
 
         page.locator("#fd-similarity-range").fill("92")
         page.locator("#fd-similarity-range").dispatch_event("input")
         assert page.locator("#fd-sim-val").inner_text() == "92%"
+        assert page.locator("#fd-warning-msg").is_visible()  # visual + sim<100 + same_album unchecked
+
+        page.check("#fd-same-album-chk")
+        assert not page.locator("#fd-warning-msg").is_visible()
+        page.uncheck("#fd-same-album-chk")
+        assert page.locator("#fd-warning-msg").is_visible()
 
         with page.expect_navigation():
             page.select_option("#fd-sort-select", "size_desc")
@@ -262,16 +267,22 @@ def run_tests() -> None:
             for u in nav_urls
         ), f"Expected submitFilters() to preserve sort and pwg_token, got: {nav_urls}"
 
-        # 4. Scan button (#fd-scan-btn) multi-chunk progress & retry button (#fd-retry-btn)
+        # 4. Scan button (#fd-scan-btn) multi-chunk progress & retry button (#fd-retry-btn) via POST
         page.goto(BASE_URL)
         page.click("#fd-scan-btn")
         page.wait_for_timeout(200)
-        assert sum(1 for u in api_calls if "action=scan" in u and "pwg_token=test-token-123" in u) == 2
+        assert sum(
+            1 for c in api_calls
+            if c["method"] == "POST" and "action=scan" in c["url"] and "pwg_token=test-token-123" in c["body"] and "pwg_token=" not in c["url"]
+        ) == 2
 
         page.goto(BASE_URL)
         page.click("#fd-retry-btn")
         page.wait_for_timeout(150)
-        assert any("action=retry_failed" in u and "pwg_token=test-token-123" in u for u in api_calls)
+        assert any(
+            c["method"] == "POST" and "action=retry_failed" in c["url"] and "pwg_token=test-token-123" in c["body"] and "pwg_token=" not in c["url"]
+            for c in api_calls
+        )
 
         # 5. Modal open/close (Escape, backdrop, close button) & zoom controls
         page.goto(BASE_URL)
@@ -301,47 +312,48 @@ def run_tests() -> None:
         page.locator("#fd-modal-images .fd-zoom-toggle-btn").first.click(force=True)
         assert "active" in page.locator("#fd-modal-images .fd-zoom-toggle-btn").first.get_attribute("class")
 
-        # 6. Modal toggle_favorite on first image
+        # 6. Modal toggle_favorite on first image via POST
         first_link.hover(force=True)
         page.locator("#fd-modal-images .fd-favorite-btn").first.click(force=True)
         page.wait_for_timeout(150)
         assert any(
-            "action=toggle_favorite" in u and "image_id=101" in u and "pwg_token=test-token-123" in u
-            for u in api_calls
+            c["method"] == "POST" and "action=toggle_favorite" in c["url"] and "image_id=101" in c["body"] and "pwg_token=test-token-123" in c["body"] and "pwg_token=" not in c["url"]
+            for c in api_calls
         )
         assert page.locator("#fd-modal-images .fd-favorite-btn").first.inner_text() == "★"
         star_loc = page.locator("#group-1 .fd-img-wrap[data-id='101'] .fd-thumb-fav-star")
         assert star_loc.count() == 1
         assert star_loc.evaluate("el => parseInt(getComputedStyle(el).zIndex, 10) >= 3")
 
-        # 7. Modal delete_image on first image (auto-closes modal when group-1 drops to 1 image)
+        # 7. Modal delete_image on first image via POST (auto-closes modal when group-1 drops to 1 image)
         first_link.hover(force=True)
         page.locator("#fd-modal-images .fd-btn-danger").first.click(force=True)
         page.wait_for_timeout(150)
         assert any(
-            "action=delete_image" in u and "image_id=101" in u and "pwg_token=test-token-123" in u
-            for u in api_calls
+            c["method"] == "POST" and "action=delete_image" in c["url"] and "image_id=101" in c["body"] and "pwg_token=test-token-123" in c["body"] and "pwg_token=" not in c["url"]
+            for c in api_calls
         )
         assert "1.50 MB" in page.locator("#fd-top-saved-space").inner_text()
         page.wait_for_selector("#fd-modal", state="hidden", timeout=5000)
 
-        # 8. Modal header group favorite button (favAllBtn) on group-2
+        # 8. Modal header group favorite button (favAllBtn) on group-2 via POST
         page.click("#group-2 .fd-open-group-btn")
         page.wait_for_selector("#fd-modal.fd-modal-show")
         page.click("#fd-modal-title .fd-favorite-all-btn")
         page.wait_for_selector("#fd-modal", state="hidden", timeout=5000)
         assert any(
-            "action=set_group_favorite" in u and "201" in u and "202" in u and "pwg_token=test-token-123" in u
-            for u in api_calls
+            c["method"] == "POST" and "action=set_group_favorite" in c["url"] and "201" in c["body"] and "202" in c["body"] and "pwg_token=test-token-123" in c["body"] and "pwg_token=" not in c["url"]
+            for c in api_calls
         )
 
-        # 9. Group header set_group_favorite button on group-3
+        # 9. Group header set_group_favorite button on group-3 via POST (remains disabled while fading out)
         page.click("#group-3 .fd-group-fav-btn")
         page.wait_for_timeout(150)
         assert any(
-            "action=set_group_favorite" in u and "301" in u and "302" in u and "pwg_token=test-token-123" in u
-            for u in api_calls
+            c["method"] == "POST" and "action=set_group_favorite" in c["url"] and "301" in c["body"] and "302" in c["body"] and "pwg_token=test-token-123" in c["body"] and "pwg_token=" not in c["url"]
+            for c in api_calls
         )
+        assert page.locator("#group-3 .fd-group-fav-btn").is_disabled()
 
         assert not page_errors, f"Uncaught JS errors detected: {page_errors}"
         browser.close()

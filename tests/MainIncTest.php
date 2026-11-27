@@ -121,7 +121,7 @@ class MainIncTest extends TestCase
         $queries = get_captured_queries();
         $this->assertCount(1, $queries);
         $this->assertSame(
-            'INSERT INTO piwigo_find_duplicates_hashes (image_id, is_favorite) VALUES (10, 1), (20, 1) ON DUPLICATE KEY UPDATE is_favorite = 1',
+            'INSERT INTO piwigo_find_duplicates_hashes (image_id, is_favorite) SELECT id, 1 FROM piwigo_images WHERE id IN (10,20) ON DUPLICATE KEY UPDATE is_favorite = 1',
             $queries[0]
         );
     }
@@ -134,7 +134,7 @@ class MainIncTest extends TestCase
         $queries = get_captured_queries();
         $this->assertCount(1, $queries);
         $this->assertSame(
-            'INSERT INTO piwigo_find_duplicates_hashes (image_id, is_favorite) VALUES (101, 0), (102, 0) ON DUPLICATE KEY UPDATE is_favorite = 0',
+            'INSERT INTO piwigo_find_duplicates_hashes (image_id, is_favorite) SELECT id, 0 FROM piwigo_images WHERE id IN (101,102) ON DUPLICATE KEY UPDATE is_favorite = 0',
             $queries[0]
         );
     }

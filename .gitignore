@@ -2,3 +2,5 @@
 /vendor/
 .jules/antigravity.md
 .agents/
+__pycache__/
+tests/__pycache__/

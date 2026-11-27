@@ -53,7 +53,19 @@ function find_duplicates_compute_dhash($filepath)
   $src_w = imagesx($img);
   $src_h = imagesy($img);
   $side = min($src_w, $src_h);
-  if ($side <= 0) return null;
+  if ($side <= 0) {
+    if (is_resource($thumb)) {
+      imagedestroy($thumb);
+    } else {
+      unset($thumb);
+    }
+    if (is_resource($img)) {
+      imagedestroy($img);
+    } else {
+      unset($img);
+    }
+    return null;
+  }
   $src_x = (int)(($src_w - $side) / 2);
   $src_y = (int)(($src_h - $side) / 2);
   imagecopyresampled($thumb, $img, 0, 0, $src_x, $src_y, $width, $height, $side, $side);
@@ -196,18 +208,21 @@ function find_duplicates_set_group_favorite($raw_ids, $target_status = 1)
     return array();
   }
 
-  $values = array();
-  $batch_size = 500;
-  foreach ($valid_ids as $id) {
-    $values[] = '(' . (int)$id . ', ' . (int)$target_status . ')';
-    if (count($values) >= $batch_size) {
-      pwg_query('INSERT INTO ' . FIND_DUPLICATES_TABLE . ' (image_id, is_favorite) VALUES ' . implode(', ', $values) . ' ON DUPLICATE KEY UPDATE is_favorite = ' . (int)$target_status);
+  $chunks = array_chunk(array_values($valid_ids), 500);
+  foreach ($chunks as $chunk) {
+    if (defined('IMAGES_TABLE')) {
+      pwg_query(
+        'INSERT INTO ' . FIND_DUPLICATES_TABLE . ' (image_id, is_favorite) ' .
+        'SELECT id, ' . (int)$target_status . ' FROM ' . IMAGES_TABLE . ' WHERE id IN (' . implode(',', $chunk) . ') ' .
+        'ON DUPLICATE KEY UPDATE is_favorite = ' . (int)$target_status
+      );
+    } else {
       $values = array();
+      foreach ($chunk as $id) {
+        $values[] = '(' . (int)$id . ', ' . (int)$target_status . ')';
+      }
+      pwg_query('INSERT INTO ' . FIND_DUPLICATES_TABLE . ' (image_id, is_favorite) VALUES ' . implode(', ', $values) . ' ON DUPLICATE KEY UPDATE is_favorite = ' . (int)$target_status);
     }
-  }
-
-  if (!empty($values)) {
-    pwg_query('INSERT INTO ' . FIND_DUPLICATES_TABLE . ' (image_id, is_favorite) VALUES ' . implode(', ', $values) . ' ON DUPLICATE KEY UPDATE is_favorite = ' . (int)$target_status);
   }
 
   return array_values($valid_ids);

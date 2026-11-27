@@ -501,15 +501,16 @@
   var tabs = document.querySelectorAll('.fd-tab');
   tabs.forEach(function(tab) {
       tab.addEventListener('click', function() {
-          // Reset explicitly on tab switch
+          // Reset explicitly on tab switch, preserving saved defaults if filter form is not rendered
           var mode = this.getAttribute('data-mode');
-          var sim = document.getElementById('fd-similarity-range') ? document.getElementById('fd-similarity-range').value : 100;
+          var simInput = document.getElementById('fd-similarity-range');
+          var sim = simInput ? simInput.value : {$FD_SIMILARITY|default:100};
           var chk = document.getElementById('fd-same-album-chk');
-          var sameAlbum = chk && chk.checked ? 1 : 0;
+          var sameAlbum = chk ? (chk.checked ? 1 : 0) : {$FD_SAME_ALBUM|default:0};
           // Do not carry over search and hidden states to avoid sticky confusion
           var actionUrl = "{$FD_ACTION_URL|escape:'javascript'}";
           var pwgToken = "{$PWG_TOKEN|escape:'javascript'}";
-          window.location.href = actionUrl + '&fd_mode=' + mode + '&similarity=' + sim + '&same_album=' + sameAlbum + '&pwg_token=' + encodeURIComponent(pwgToken);
+          window.location.href = actionUrl + '&fd_mode=' + encodeURIComponent(mode) + '&similarity=' + encodeURIComponent(sim) + '&same_album=' + encodeURIComponent(sameAlbum) + '&pwg_token=' + encodeURIComponent(pwgToken);
       });
   });
 })();
@@ -540,7 +541,15 @@ if (retryBtn) {
     btn.disabled = true;
     btn.innerText = '{'Retrying...'|translate|escape:'javascript'}';
 
-    fetch(actionUrl + '&action=retry_failed&pwg_token=' + pwgToken)
+    var body = new URLSearchParams();
+    body.append('action', 'retry_failed');
+    body.append('pwg_token', pwgToken);
+
+    fetch(actionUrl + '&action=retry_failed', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8' },
+      body: body.toString()
+    })
       .then(response => response.json())
       .then(data => {
         if (data.status === 'ok') {
@@ -556,9 +565,15 @@ if (retryBtn) {
 }
 
 function scanChunk() {
-  var url = actionUrl + '&action=scan&pwg_token=' + pwgToken;
+  var body = new URLSearchParams();
+  body.append('action', 'scan');
+  body.append('pwg_token', pwgToken);
 
-  fetch(url)
+  fetch(actionUrl + '&action=scan', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8' },
+    body: body.toString()
+  })
     .then(response => response.json())
     .then(data => {
       document.getElementById('fd-hashed').innerText = data.hashed;
@@ -687,8 +702,12 @@ function scanChunk() {
       });
   }
 
+  var simRange = document.getElementById('fd-similarity-range');
+
   function updateWarning() {
-    if (!chk.checked) {
+    var currentMode = document.getElementById('fd-mode-input') ? document.getElementById('fd-mode-input').value : 'visual';
+    var currentSim = simRange ? parseInt(simRange.value, 10) : 100;
+    if (currentMode === 'visual' && currentSim < 100 && !chk.checked) {
       var comparisons = (totalImages * (totalImages - 1)) / 2;
       var compStr = comparisons.toLocaleString();
       var warnTemplate = "{'Warning: Searching in the same album is disabled. Approximately %s comparisons will be made. This may take a while and load the server.'|translate|escape:'javascript'}";
@@ -697,6 +716,11 @@ function scanChunk() {
     } else {
       warnMsg.style.display = 'none';
     }
+  }
+
+  if (simRange) {
+    simRange.addEventListener('input', updateWarning);
+    simRange.addEventListener('change', updateWarning);
   }
 
   if (chk) {
@@ -847,9 +871,10 @@ function scanChunk() {
   var isSyncZoomActive = false;
   var isReloading = false;
 
-  // CSS url("...") Escape Helper for filenames with quotes, apostrophes, backslashes, or parentheses
+  // CSS url("...") Escape Helper for filenames with quotes, apostrophes, backslashes, newlines, or parentheses
   function escapeCssUrl(url) {
     return String(url || '')
+      .replace(/[\r\n]/g, '')
       .replace(/\\/g, '\\\\')
       .replace(/"/g, '\\"')
       .replace(/'/g, "\\'")
@@ -1037,9 +1062,17 @@ function scanChunk() {
     btnEl.innerHTML = '...';
     btnEl.disabled = true;
 
-    var url = actionUrl + '&action=set_group_favorite&image_ids=' + encodeURIComponent(ids) + '&is_favorite=' + encodeURIComponent(targetStatus) + '&pwg_token=' + pwgToken;
+    var body = new URLSearchParams();
+    body.append('action', 'set_group_favorite');
+    body.append('image_ids', ids);
+    body.append('is_favorite', String(targetStatus));
+    body.append('pwg_token', pwgToken);
 
-    fetch(url)
+    fetch(actionUrl + '&action=set_group_favorite', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8' },
+      body: body.toString()
+    })
       .then(response => response.json())
       .then(data => {
         if (data.status === 'ok') {
@@ -1055,9 +1088,11 @@ function scanChunk() {
             onSuccess(updatedImages, newFav);
           }
 
-          btnEl.innerHTML = originalText;
-          btnEl.disabled = false;
-          checkGroupStatusAndClose(updatedImages, groupEl);
+          var willFadeOut = checkGroupStatusAndClose(updatedImages, groupEl);
+          if (!willFadeOut) {
+            btnEl.innerHTML = originalText;
+            btnEl.disabled = false;
+          }
         } else {
           var errorLabel = "{'Error:'|translate|escape:'javascript'}";
           var unknownErrorLabel = "{'Unknown error'|translate|escape:'javascript'}";
@@ -1308,16 +1343,16 @@ function scanChunk() {
       var badgesHtml = '';
 
       var creationDate = img.DATE_CREATION ? img.DATE_CREATION : "{'Unknown'|translate|escape:'javascript'}";
-      badgesHtml += '<span class="fd-badge" title="{'Creation date'|translate|escape:'javascript'}">📅 ' + escapeHtml(creationDate) + '</span>';
+      badgesHtml += '<span class="fd-badge" title="' + escapeHtml("{'Creation date'|translate|escape:'javascript'}") + '">📅 ' + escapeHtml(creationDate) + '</span>';
 
       var fileSize = img.FILE_SIZE ? img.FILE_SIZE : "{'No data'|translate|escape:'javascript'}";
-      badgesHtml += '<span class="fd-badge" title="{'File size'|translate|escape:'javascript'}">💾 ' + escapeHtml(fileSize) + '</span>';
+      badgesHtml += '<span class="fd-badge" title="' + escapeHtml("{'File size'|translate|escape:'javascript'}") + '">💾 ' + escapeHtml(fileSize) + '</span>';
 
       if (img.HAS_GPS == 1) {
-          badgesHtml += '<span class="fd-badge badge-gps" title="{'Has GPS location'|translate|escape:'javascript'}">📍 GPS</span>';
+          badgesHtml += '<span class="fd-badge badge-gps" title="' + escapeHtml("{'Has GPS location'|translate|escape:'javascript'}") + '">📍 GPS</span>';
       }
       if (img.HAS_MOTION == 1) {
-          badgesHtml += '<span class="fd-badge badge-motion" title="{'Registered as Motion Picture'|translate|escape:'javascript'}">🎬 {'Motion'|translate|escape:'javascript'}</span>';
+          badgesHtml += '<span class="fd-badge badge-motion" title="' + escapeHtml("{'Registered as Motion Picture'|translate|escape:'javascript'}") + '">🎬 ' + escapeHtml("{'Motion'|translate|escape:'javascript'}") + '</span>';
       }
 
       if (img.ALBUMS) {
@@ -1326,11 +1361,11 @@ function scanChunk() {
          for (var cat_id in img.ALBUMS) {
             albumNames.push(img.ALBUMS[cat_id]);
          }
-         badgesHtml += '<span class="fd-badge" title="{'Albums:'|translate|escape:'javascript'} ' + escapeHtml(albumNames.join(', ')) + '">📁 ' + parseInt(albumCount, 10) + ' {'Album(s)'|translate|escape:'javascript'}</span>';
+         badgesHtml += '<span class="fd-badge" title="' + escapeHtml("{'Albums:'|translate|escape:'javascript'}") + ' ' + escapeHtml(albumNames.join(', ')) + '">📁 ' + parseInt(albumCount, 10) + ' ' + escapeHtml("{'Album(s)'|translate|escape:'javascript'}") + '</span>';
       }
 
-      badgesHtml += '<span class="fd-badge" title="{'Photo ID'|translate|escape:'javascript'}">#️⃣ ' + parseInt(img.ID, 10) + '</span>';
-      badgesHtml += '<span class="fd-badge" title="{'File name'|translate|escape:'javascript'}">📄 ' + escapeHtml(img.FILE) + '</span>';
+      badgesHtml += '<span class="fd-badge" title="' + escapeHtml("{'Photo ID'|translate|escape:'javascript'}") + '">#️⃣ ' + parseInt(img.ID, 10) + '</span>';
+      badgesHtml += '<span class="fd-badge" title="' + escapeHtml("{'File name'|translate|escape:'javascript'}") + '">📄 ' + escapeHtml(img.FILE) + '</span>';
 
       info.innerHTML = badgesHtml;
 
@@ -1429,9 +1464,16 @@ function scanChunk() {
     btnEl.innerHTML = '...';
     btnEl.disabled = true;
 
-    var url = actionUrl + '&action=toggle_favorite&image_id=' + imageId + '&pwg_token=' + pwgToken;
+    var body = new URLSearchParams();
+    body.append('action', 'toggle_favorite');
+    body.append('image_id', String(imageId));
+    body.append('pwg_token', pwgToken);
 
-    fetch(url)
+    fetch(actionUrl + '&action=toggle_favorite', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8' },
+      body: body.toString()
+    })
       .then(response => response.json())
       .then(data => {
         if (data.status === 'ok') {
@@ -1488,9 +1530,16 @@ function scanChunk() {
     btn.innerHTML = '⏳';
     btn.disabled = true;
 
-    var url = actionUrl + '&action=delete_image&image_id=' + imageId + '&pwg_token=' + pwgToken;
+    var body = new URLSearchParams();
+    body.append('action', 'delete_image');
+    body.append('image_id', String(imageId));
+    body.append('pwg_token', pwgToken);
 
-    fetch(url)
+    fetch(actionUrl + '&action=delete_image', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8' },
+      body: body.toString()
+    })
       .then(response => response.json())
       .then(data => {
         if (data.status === 'ok') {
