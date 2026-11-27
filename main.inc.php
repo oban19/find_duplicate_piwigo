@@ -1,7 +1,7 @@
 <?php
 /*
 Plugin Name: Find Duplicates
-Version: 1.1.10
+Version: 1.1.11
 Description: Tool for finding duplicate and similar images (pHash/dHash/time).
 Plugin URI: http://piwigo.org/ext/extension_view.php?eid=1123
 Author: Oban
@@ -13,7 +13,7 @@ defined('PHPWG_ROOT_PATH') or die('Hacking attempt!');
 define('FIND_DUPLICATES_ID', basename(dirname(__FILE__)));
 define('FIND_DUPLICATES_PATH', PHPWG_PLUGINS_PATH . FIND_DUPLICATES_ID . '/');
 define('FIND_DUPLICATES_ADMIN', get_root_url() . 'admin.php?page=plugin-' . FIND_DUPLICATES_ID);
-define('FIND_DUPLICATES_VERSION', '1.1.10');
+define('FIND_DUPLICATES_VERSION', '1.1.11');
 
 global $prefixeTable;
 define('FIND_DUPLICATES_TABLE', $prefixeTable . 'find_duplicates_hashes');
@@ -39,7 +39,14 @@ function find_duplicates_compute_dhash($filepath)
   $height = 8;
   
   $thumb = imagecreatetruecolor($width, $height);
-  if (!$thumb) return null;
+  if (!$thumb) {
+    if (is_resource($img)) {
+      imagedestroy($img);
+    } else {
+      unset($img);
+    }
+    return null;
+  }
 
   // Convert to grayscale and crop center square before resizing to 9x8
   imagefilter($img, IMG_FILTER_GRAYSCALE);
@@ -65,8 +72,16 @@ function find_duplicates_compute_dhash($filepath)
     }
   }
 
-unset($thumb);
-unset($img);
+  if (is_resource($thumb)) {
+    imagedestroy($thumb);
+  } else {
+    unset($thumb);
+  }
+  if (is_resource($img)) {
+    imagedestroy($img);
+  } else {
+    unset($img);
+  }
 
   return $hash; // 64-bit binary string
 }
@@ -153,10 +168,13 @@ function find_duplicates_on_delete($ids)
 
   if (empty($clean_ids)) return;
 
-  $query = '
-    DELETE FROM ' . FIND_DUPLICATES_TABLE . '
-    WHERE image_id IN (' . implode(',', $clean_ids) . ')';
-  pwg_query($query);
+  $chunks = array_chunk($clean_ids, 500);
+  foreach ($chunks as $chunk) {
+    $query = '
+      DELETE FROM ' . FIND_DUPLICATES_TABLE . '
+      WHERE image_id IN (' . implode(',', $chunk) . ')';
+    pwg_query($query);
+  }
 
   find_duplicates_clear_cache();
 }

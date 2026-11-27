@@ -144,6 +144,10 @@ if (isset($_GET['action']) && $_GET['action'] == 'delete_image') {
   }
 
   $image_id = (int)$_GET['image_id'];
+  if ($image_id <= 0) {
+    echo json_encode(array('status' => 'error', 'error' => l10n('Missing image_id')));
+    die();
+  }
 
   // Record file size before deletion
   $file_size = 0;
@@ -196,6 +200,10 @@ if (isset($_GET['action']) && $_GET['action'] == 'toggle_favorite') {
   }
 
   $image_id = (int)$_GET['image_id'];
+  if ($image_id <= 0) {
+    echo json_encode(array('status' => 'error', 'error' => l10n('Missing image_id')));
+    die();
+  }
 
   // Get current status
   $query = 'SELECT is_favorite FROM ' . FIND_DUPLICATES_TABLE . ' WHERE image_id = ' . $image_id;
@@ -280,6 +288,10 @@ $fd_show_hidden = (isset($_GET['fd_show_hidden']) && $_GET['fd_show_hidden'] == 
 $fd_time_interval = isset($_GET['fd_time_interval'])
   ? (int)$_GET['fd_time_interval']
   : (isset($conf['find_duplicates_time_interval']) ? (int)$conf['find_duplicates_time_interval'] : 15);
+$allowed_time_intervals = array(5, 10, 15, 30, 60);
+if (!in_array($fd_time_interval, $allowed_time_intervals, true)) {
+  $fd_time_interval = 15;
+}
 $fd_search_group = isset($_GET['fd_search_group']) ? $_GET['fd_search_group'] : '';
 
 $fd_filter_album = isset($_GET['fd_filter_album'])
@@ -354,8 +366,8 @@ if ($can_show_duplicates)
   $cache_secret = find_duplicates_get_cache_secret();
 
   // Cache key only depends on the heavy grouping parameters.
-  // We use v12 to introduce THUMB_URL, protected cache directory, and secret cache suffix.
-  $cache_filename = $cache_dir . '/cache_v12_s' . $similarity_limit . '_a' . $same_album . '_h' . $hashed_images . '_m' . $fd_mode . '_t' . $fd_time_interval . '_' . $cache_secret . '.json';
+  // We use v13 to combine THUMB_URL/protected cache/secret suffix with locale-independent JSON (no l10n() in cache).
+  $cache_filename = $cache_dir . '/cache_v13_s' . $similarity_limit . '_a' . $same_album . '_h' . $hashed_images . '_m' . $fd_mode . '_t' . $fd_time_interval . '_' . $cache_secret . '.json';
 
   $cache_valid = false;
   if (file_exists($cache_filename)) {
@@ -447,51 +459,100 @@ if ($can_show_duplicates)
     if ($fd_mode == 'time') {
       $groups = find_duplicates_group_by_time($images_data, $fd_time_interval, $same_album);
     } else { // 'visual' mode
-      $processed_ids = array();
-      // O(N^2) -> O(N^2/2) by skipping already compared pairs
-      // By copying the array and shifting elements, or keeping track of the current index,
-      // we only compare elements with the elements coming AFTER them in the array.
+      if ($max_diff == 0) {
+        // O(N) fast path for exact 100% similarity
+        $hash_buckets = array();
+        foreach ($images_data as $id => $img_data) {
+          $phash = $img_data['PHASH'];
+          if (!isset($hash_buckets[$phash])) {
+            $hash_buckets[$phash] = array();
+          }
+          $hash_buckets[$phash][] = $id;
+        }
 
-      // Extract array keys to iterate effectively by index without resetting pointer
-      $image_ids = array_keys($images_data);
-      $num_images_total = count($image_ids);
+        foreach ($hash_buckets as $bucket_ids) {
+          $bucket_count = count($bucket_ids);
+          if ($bucket_count < 2) {
+            continue;
+          }
 
-      for ($i = 0; $i < $num_images_total; $i++) {
-        $id1 = $image_ids[$i];
-        if (isset($processed_ids[$id1])) continue;
-        
-        $img1 = $images_data[$id1];
-        $current_group = array($id1);
-        
-        // Start from $i + 1
-        for ($j = $i + 1; $j < $num_images_total; $j++) {
-          $id2 = $image_ids[$j];
-          if (isset($processed_ids[$id2])) continue;
+          if (!$same_album) {
+            $groups[] = $bucket_ids;
+          } else {
+            // Within the small bucket, group by shared album
+            $processed_in_bucket = array();
+            for ($i = 0; $i < $bucket_count; $i++) {
+              $id1 = $bucket_ids[$i];
+              if (isset($processed_in_bucket[$id1])) continue;
+
+              $img1 = $images_data[$id1];
+              $current_group = array($id1);
+
+              for ($j = $i + 1; $j < $bucket_count; $j++) {
+                $id2 = $bucket_ids[$j];
+                if (isset($processed_in_bucket[$id2])) continue;
+
+                $shared_albums = array_intersect_key($img1['ALBUMS'], $images_data[$id2]['ALBUMS']);
+                if (!empty($shared_albums)) {
+                  $current_group[] = $id2;
+                  $processed_in_bucket[$id2] = true;
+                }
+              }
+
+              if (count($current_group) > 1) {
+                $groups[] = $current_group;
+                $processed_in_bucket[$id1] = true;
+              }
+            }
+          }
+        }
+      } else {
+        $processed_ids = array();
+        // O(N^2) -> O(N^2/2) by skipping already compared pairs
+        // By copying the array and shifting elements, or keeping track of the current index,
+        // we only compare elements with the elements coming AFTER them in the array.
+
+        // Extract array keys to iterate effectively by index without resetting pointer
+        $image_ids = array_keys($images_data);
+        $num_images_total = count($image_ids);
+
+        for ($i = 0; $i < $num_images_total; $i++) {
+          $id1 = $image_ids[$i];
+          if (isset($processed_ids[$id1])) continue;
           
-          $img2 = $images_data[$id2];
+          $img1 = $images_data[$id1];
+          $current_group = array($id1);
+          
+          // Start from $i + 1
+          for ($j = $i + 1; $j < $num_images_total; $j++) {
+            $id2 = $image_ids[$j];
+            if (isset($processed_ids[$id2])) continue;
+            
+            $img2 = $images_data[$id2];
 
-          // Check Album Condition
-          if ($same_album) {
-            // ⚡ Bolt Optimization: Use array_intersect_key instead of array_intersect(array_keys())
-            // avoids 2 array_keys() calls per comparison inside this O(N^2) nested loop.
-            $shared_albums = array_intersect_key($img1['ALBUMS'], $img2['ALBUMS']);
-            if (empty($shared_albums)) {
-              continue; // Not in the same album
+            // Check Album Condition
+            if ($same_album) {
+              // ⚡ Bolt Optimization: Use array_intersect_key instead of array_intersect(array_keys())
+              // avoids 2 array_keys() calls per comparison inside this O(N^2) nested loop.
+              $shared_albums = array_intersect_key($img1['ALBUMS'], $img2['ALBUMS']);
+              if (empty($shared_albums)) {
+                continue; // Not in the same album
+              }
+            }
+            
+            // Check Similarity Condition
+            $dist = find_duplicates_hamming_distance($img1['PHASH'], $img2['PHASH']);
+            if ($dist <= $max_diff) {
+              $current_group[] = $id2;
+              // Mark as processed immediately so it's excluded from subsequent inner loops
+              $processed_ids[$id2] = true;
             }
           }
           
-          // Check Similarity Condition
-          $dist = find_duplicates_hamming_distance($img1['PHASH'], $img2['PHASH']);
-          if ($dist <= $max_diff) {
-            $current_group[] = $id2;
-            // Mark as processed immediately so it's excluded from subsequent inner loops
-            $processed_ids[$id2] = true;
+          if (count($current_group) > 1) {
+            $groups[] = $current_group;
+            $processed_ids[$id1] = true; // explicitly mark the lead item
           }
-        }
-        
-        if (count($current_group) > 1) {
-          $groups[] = $current_group;
-          $processed_ids[$id1] = true; // explicitly mark the lead item
         }
       }
     }
@@ -510,7 +571,7 @@ if ($can_show_duplicates)
         // Calculate filesize lazily only for duplicate images
         if (!isset($img_data['FILE_SIZE_BYTES'])) {
           $file_path_abs = PHPWG_ROOT_PATH . $img_data['PATH'];
-          $filesize_str = l10n('No data');
+          $filesize_str = '';
           $bytes = 0;
           if (file_exists($file_path_abs)) {
             $bytes = filesize($file_path_abs);
@@ -550,7 +611,7 @@ if ($can_show_duplicates)
         }
       }
 
-      $album_name = l10n('Unknown album');
+      $album_name = '';
       if (!empty($album_counts_for_group)) {
         // Find album with the most photos (or first maximum on tie)
         $max_count = -1;
@@ -576,8 +637,7 @@ if ($can_show_duplicates)
       );
     }
     
-    // Save to cache, clear old cache files
-    find_duplicates_clear_cache();
+    // Save to cache without clearing other filter variants
     @file_put_contents($cache_filename, json_encode($duplicates));
   }
 }
@@ -596,10 +656,13 @@ foreach ($duplicates as $group) {
 
 $favorites_map = array();
 if (!empty($all_ids)) {
-  $query = 'SELECT image_id, is_favorite FROM ' . FIND_DUPLICATES_TABLE . ' WHERE is_favorite = 1 AND image_id IN (' . implode(',', $all_ids) . ')';
-  $result = pwg_query($query);
-  while ($row = pwg_db_fetch_assoc($result)) {
-    $favorites_map[$row['image_id']] = true;
+  $chunks = array_chunk($all_ids, 500);
+  foreach ($chunks as $chunk) {
+    $query = 'SELECT image_id, is_favorite FROM ' . FIND_DUPLICATES_TABLE . ' WHERE is_favorite = 1 AND image_id IN (' . implode(',', $chunk) . ')';
+    $result = pwg_query($query);
+    while ($row = pwg_db_fetch_assoc($result)) {
+      $favorites_map[$row['image_id']] = true;
+    }
   }
 }
 
@@ -663,7 +726,7 @@ foreach ($duplicates as $group) {
   }
 
   // Filter by group name if search query is provided
-  $album_name = (string)$group['BASE_ALBUM_NAME'];
+  $album_name = !empty($group['BASE_ALBUM_NAME']) ? (string)$group['BASE_ALBUM_NAME'] : l10n('Unknown album');
   if (!empty($fd_search_group) && stripos($album_name, (string)$fd_search_group) === false) {
     continue;
   }
@@ -690,7 +753,8 @@ foreach ($duplicates as $group) {
 }
 
 // Sort Logic
-$sort_opt = isset($_GET['sort']) ? $_GET['sort'] : 'default';
+$allowed_sorts = array('default', 'size_desc', 'size_asc', 'count_desc', 'count_asc', 'date_desc', 'date_asc', 'alpha_asc', 'alpha_desc');
+$sort_opt = (isset($_GET['sort']) && in_array($_GET['sort'], $allowed_sorts, true)) ? $_GET['sort'] : 'default';
 
 if ($sort_opt !== 'default') {
   usort($filtered_duplicates, function($a, $b) use ($sort_opt) {
