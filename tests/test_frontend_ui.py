@@ -81,7 +81,7 @@ def render_admin_tpl() -> str:
         "{$FD_ACTION_URL}": "/admin.php?page=plugin-find_duplicates",
         "{$PWG_TOKEN|escape:'javascript'}": "test-token-123",
         "{$PWG_TOKEN}": "test-token-123",
-        "{$FD_VERSION|default:'1.0.0'|escape:'html'}": "1.1.10",
+        "{$FD_VERSION|default:'1.0.0'|escape:'html'}": "1.1.11",
         "{$FD_TOTAL_SAVED_SPACE|default:'0 B'|escape:'html'}": "0 B",
         "{$FD_HASHED_IMAGES}": "50",
         "{$FD_TOTAL_IMAGES|default:0}": "100",
