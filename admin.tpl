@@ -787,7 +787,7 @@ function scanChunk() {
                   {/if}
                 </div>
                 {if $img.IS_FAVORITE|default:0}
-                <div class="fd-thumb-fav-star" style="color: #ffc107; font-size: 24px; position: absolute; top: -5px; left: 5px; text-shadow: 1px 1px 3px rgba(0,0,0,0.8);">★</div>
+                <div class="fd-thumb-fav-star" style="color: #ffc107; font-size: 24px; position: absolute; top: -5px; left: 5px; z-index: 3; text-shadow: 1px 1px 3px rgba(0,0,0,0.8);">★</div>
                 {/if}
               </div>
             {/foreach}
@@ -974,7 +974,7 @@ function scanChunk() {
       if (!existingStar) {
         var starDiv = document.createElement('div');
         starDiv.className = 'fd-thumb-fav-star';
-        starDiv.style.cssText = 'color: #ffc107; font-size: 24px; position: absolute; top: -5px; left: 5px; text-shadow: 1px 1px 3px rgba(0,0,0,0.8);';
+        starDiv.style.cssText = 'color: #ffc107; font-size: 24px; position: absolute; top: -5px; left: 5px; z-index: 3; text-shadow: 1px 1px 3px rgba(0,0,0,0.8);';
         starDiv.innerText = '★';
         wrap.appendChild(starDiv);
       }

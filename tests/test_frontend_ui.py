@@ -310,7 +310,9 @@ def run_tests() -> None:
             for u in api_calls
         )
         assert page.locator("#fd-modal-images .fd-favorite-btn").first.inner_text() == "★"
-        assert page.locator("#group-1 .fd-img-wrap[data-id='101'] .fd-thumb-fav-star").count() == 1
+        star_loc = page.locator("#group-1 .fd-img-wrap[data-id='101'] .fd-thumb-fav-star")
+        assert star_loc.count() == 1
+        assert star_loc.evaluate("el => parseInt(getComputedStyle(el).zIndex, 10) >= 3")
 
         # 7. Modal delete_image on first image (auto-closes modal when group-1 drops to 1 image)
         first_link.hover(force=True)
