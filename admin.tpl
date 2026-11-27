@@ -837,6 +837,8 @@ function scanChunk() {
 
 <script type="text/javascript">
 (function(){
+  var pwgToken = "{$PWG_TOKEN|escape:'javascript'}";
+  var actionUrl = "{$FD_ACTION_URL|escape:'javascript'}";
   var modal = document.getElementById('fd-modal');
   var closeBtn = document.getElementById('fd-modal-close');
   var groups = document.querySelectorAll('.fd-group');
