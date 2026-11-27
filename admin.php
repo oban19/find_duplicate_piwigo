@@ -9,7 +9,8 @@ include_once(PHPWG_ROOT_PATH . 'admin/include/functions.php');
 include_once(FIND_DUPLICATES_PATH . 'main.inc.php');
 
 // Verify table existence early (in case plugin is accessed while uninstalled)
-$table_check = pwg_query("SHOW TABLES LIKE '" . FIND_DUPLICATES_TABLE . "'");
+$escaped_table_like = str_replace(array('\\', '%', '_'), array('\\\\', '\\%', '\\_'), FIND_DUPLICATES_TABLE);
+$table_check = pwg_query("SHOW TABLES LIKE '" . $escaped_table_like . "'");
 if (!pwg_db_fetch_assoc($table_check)) {
   $page['errors'][] = l10n('An error occurred.');
   return;
@@ -57,14 +58,38 @@ function find_duplicates_format_bytes($bytes) {
   return $bytes . ' B';
 }
 
+// Helper: send JSON response with safe headers and terminate
+function find_duplicates_json_response($payload, $status_code = 200) {
+  if (!headers_sent()) {
+    if ($status_code !== 200 && function_exists('http_response_code')) {
+      http_response_code($status_code);
+    }
+    header('Content-Type: application/json; charset=utf-8');
+    header('X-Content-Type-Options: nosniff');
+  }
+  echo json_encode($payload);
+  die();
+}
+
+// Helper: enforce POST for state-changing AJAX endpoints
+function find_duplicates_require_post() {
+  if (!isset($_SERVER['REQUEST_METHOD']) || strtoupper($_SERVER['REQUEST_METHOD']) !== 'POST') {
+    find_duplicates_json_response(array('status' => 'error', 'error' => l10n('An error occurred.')), 405);
+  }
+}
+
+// Resolve AJAX action (prefer POST, fallback to GET for routing compatibility)
+$fd_ajax_action = isset($_POST['action']) ? $_POST['action'] : (isset($_GET['action']) ? $_GET['action'] : '');
+
 // Handle AJAX scan request
-if (isset($_GET['action']) && $_GET['action'] == 'scan')
+if ($fd_ajax_action === 'scan')
 {
+  find_duplicates_require_post();
   check_pwg_token();
   
   // Find images without a hash
   $query = '
-    SELECT *
+    SELECT i.*
     FROM ' . IMAGES_TABLE . ' i
     LEFT JOIN ' . FIND_DUPLICATES_TABLE . ' h ON i.id = h.image_id
     WHERE h.phash IS NULL
@@ -105,6 +130,10 @@ if (isset($_GET['action']) && $_GET['action'] == 'scan')
   if (!empty($insert_values)) {
     pwg_query("INSERT INTO " . FIND_DUPLICATES_TABLE . " (image_id, phash) VALUES " . implode(", ", $insert_values) . " ON DUPLICATE KEY UPDATE phash = VALUES(phash)");
   }
+
+  if ($processed > 0) {
+    find_duplicates_clear_cache();
+  }
   
   // Get counts to return progress
   $scan_stats = find_duplicates_get_scan_stats();
@@ -112,41 +141,39 @@ if (isset($_GET['action']) && $_GET['action'] == 'scan')
   $hashed_images = $scan_stats['hashed'];
   $failed_images = $scan_stats['failed'];
 
-  echo json_encode(array(
+  find_duplicates_json_response(array(
     'processed_in_chunk' => $processed,
     'hashed' => $hashed_images,
     'total' => $total_images,
     'failed' => $failed_images,
     'done' => ($processed == 0 || ($hashed_images + $failed_images) >= $total_images)
   ));
-  die();
 }
 
 // Handle AJAX retry failed
-if (isset($_GET['action']) && $_GET['action'] == 'retry_failed') {
+if ($fd_ajax_action === 'retry_failed') {
+  find_duplicates_require_post();
   check_pwg_token();
 
   $query = 'UPDATE ' . FIND_DUPLICATES_TABLE . ' SET phash = NULL WHERE phash = \'failed\'';
   pwg_query($query);
   find_duplicates_clear_cache();
 
-  echo json_encode(array('status' => 'ok'));
-  die();
+  find_duplicates_json_response(array('status' => 'ok'));
 }
 
 // Handle AJAX image deletion
-if (isset($_GET['action']) && $_GET['action'] == 'delete_image') {
+if ($fd_ajax_action === 'delete_image') {
+  find_duplicates_require_post();
   check_pwg_token();
 
-  if (!isset($_GET['image_id'])) {
-    echo json_encode(array('status' => 'error', 'error' => l10n('Missing image_id')));
-    die();
+  if (!isset($_POST['image_id'])) {
+    find_duplicates_json_response(array('status' => 'error', 'error' => l10n('Missing image_id')));
   }
 
-  $image_id = (int)$_GET['image_id'];
+  $image_id = (int)$_POST['image_id'];
   if ($image_id <= 0) {
-    echo json_encode(array('status' => 'error', 'error' => l10n('Missing image_id')));
-    die();
+    find_duplicates_json_response(array('status' => 'error', 'error' => l10n('Missing image_id')));
   }
 
   // Record file size before deletion
@@ -181,28 +208,26 @@ if (isset($_GET['action']) && $_GET['action'] == 'delete_image') {
   // Delete action must also use wildcard to clean cache if exact match fails
   find_duplicates_clear_cache();
 
-  echo json_encode(array(
+  find_duplicates_json_response(array(
     'status' => 'ok',
     'message' => 'Image deleted and cache updated.',
     'deleted_bytes' => $file_size,
     'total_saved_bytes' => $saved_space
   ));
-  die();
 }
 
 // Handle AJAX toggle favorite
-if (isset($_GET['action']) && $_GET['action'] == 'toggle_favorite') {
+if ($fd_ajax_action === 'toggle_favorite') {
+  find_duplicates_require_post();
   check_pwg_token();
 
-  if (!isset($_GET['image_id'])) {
-    echo json_encode(array('status' => 'error', 'error' => l10n('Missing image_id')));
-    die();
+  if (!isset($_POST['image_id'])) {
+    find_duplicates_json_response(array('status' => 'error', 'error' => l10n('Missing image_id')));
   }
 
-  $image_id = (int)$_GET['image_id'];
+  $image_id = (int)$_POST['image_id'];
   if ($image_id <= 0) {
-    echo json_encode(array('status' => 'error', 'error' => l10n('Missing image_id')));
-    die();
+    find_duplicates_json_response(array('status' => 'error', 'error' => l10n('Missing image_id')));
   }
 
   // Get current status
@@ -214,41 +239,42 @@ if (isset($_GET['action']) && $_GET['action'] == 'toggle_favorite') {
     $new_status = $row['is_favorite'] ? 0 : 1;
     pwg_query('UPDATE ' . FIND_DUPLICATES_TABLE . ' SET is_favorite = ' . $new_status . ' WHERE image_id = ' . $image_id);
   } else {
-    // Row may not exist yet in Time mode if gallery was not visually scanned
+    // Verify image exists in IMAGES_TABLE before creating a row (e.g. in Time mode)
+    $img_exists_res = pwg_query('SELECT id FROM ' . IMAGES_TABLE . ' WHERE id = ' . $image_id);
+    if (!pwg_db_fetch_assoc($img_exists_res)) {
+      find_duplicates_json_response(array('status' => 'error', 'error' => l10n('An error occurred.')));
+    }
     $new_status = 1;
     pwg_query('INSERT INTO ' . FIND_DUPLICATES_TABLE . ' (image_id, phash, is_favorite) VALUES (' . $image_id . ', NULL, 1) ON DUPLICATE KEY UPDATE is_favorite = 1');
   }
 
   // Do NOT invalidate cache anymore! 
   // Favorite status is now injected dynamically during the render phase.
-  echo json_encode(array('status' => 'ok', 'is_favorite' => $new_status));
-  die();
+  find_duplicates_json_response(array('status' => 'ok', 'is_favorite' => $new_status));
 }
 
 // Handle AJAX batch set group favorite
-if (isset($_GET['action']) && $_GET['action'] == 'set_group_favorite') {
+if ($fd_ajax_action === 'set_group_favorite') {
+  find_duplicates_require_post();
   check_pwg_token();
 
-  $raw_ids = isset($_POST['image_ids']) ? $_POST['image_ids'] : (isset($_GET['image_ids']) ? $_GET['image_ids'] : '');
+  $raw_ids = isset($_POST['image_ids']) ? $_POST['image_ids'] : '';
   if (empty($raw_ids)) {
-    echo json_encode(array('status' => 'error', 'error' => l10n('Missing image_id')));
-    die();
+    find_duplicates_json_response(array('status' => 'error', 'error' => l10n('Missing image_id')));
   }
 
-  $target_status = (isset($_REQUEST['is_favorite']) && (int)$_REQUEST['is_favorite'] === 0) ? 0 : 1;
+  $target_status = (isset($_POST['is_favorite']) && (int)$_POST['is_favorite'] === 0) ? 0 : 1;
   $valid_ids = find_duplicates_set_group_favorite($raw_ids, $target_status);
 
   if (empty($valid_ids)) {
-    echo json_encode(array('status' => 'error', 'error' => l10n('Missing image_id')));
-    die();
+    find_duplicates_json_response(array('status' => 'error', 'error' => l10n('Missing image_id')));
   }
 
-  echo json_encode(array(
+  find_duplicates_json_response(array(
     'status' => 'ok',
     'is_favorite' => $target_status,
     'updated_ids' => $valid_ids
   ));
-  die();
 }
 
 // Helper to calculate Hamming distance for 64-bit string
@@ -366,8 +392,8 @@ if ($can_show_duplicates)
   $cache_secret = find_duplicates_get_cache_secret();
 
   // Cache key only depends on the heavy grouping parameters.
-  // We use v13 to combine THUMB_URL/protected cache/secret suffix with locale-independent JSON (no l10n() in cache).
-  $cache_filename = $cache_dir . '/cache_v13_s' . $similarity_limit . '_a' . $same_album . '_h' . $hashed_images . '_m' . $fd_mode . '_t' . $fd_time_interval . '_' . $cache_secret . '.json';
+  // We use v14 to include total_images (_n) for time-mode accuracy and atomic cache writes.
+  $cache_filename = $cache_dir . '/cache_v14_s' . $similarity_limit . '_a' . $same_album . '_h' . $hashed_images . '_n' . $total_images . '_m' . $fd_mode . '_t' . $fd_time_interval . '_' . $cache_secret . '.json';
 
   $cache_valid = false;
   if (file_exists($cache_filename)) {
@@ -423,7 +449,8 @@ if ($can_show_duplicates)
         if (class_exists('SrcImage') && class_exists('DerivativeImage')) {
           try {
             $src_img = new SrcImage($row);
-            $deriv_thumb = new DerivativeImage(IMG_THUMB, $src_img);
+            $thumb_type = defined('IMG_THUMB') ? IMG_THUMB : 'thumb';
+            $deriv_thumb = new DerivativeImage($thumb_type, $src_img);
             $generated_thumb_url = $deriv_thumb->get_url();
             if (!empty($generated_thumb_url)) {
               $thumb_url = $generated_thumb_url;
@@ -464,6 +491,9 @@ if ($can_show_duplicates)
         $hash_buckets = array();
         foreach ($images_data as $id => $img_data) {
           $phash = $img_data['PHASH'];
+          if (strlen($phash) !== 64) {
+            continue;
+          }
           if (!isset($hash_buckets[$phash])) {
             $hash_buckets[$phash] = array();
           }
@@ -521,6 +551,7 @@ if ($can_show_duplicates)
           if (isset($processed_ids[$id1])) continue;
           
           $img1 = $images_data[$id1];
+          if (strlen($img1['PHASH']) !== 64) continue;
           $current_group = array($id1);
           
           // Start from $i + 1
@@ -529,6 +560,7 @@ if ($can_show_duplicates)
             if (isset($processed_ids[$id2])) continue;
             
             $img2 = $images_data[$id2];
+            if (strlen($img2['PHASH']) !== 64) continue;
 
             // Check Album Condition
             if ($same_album) {
@@ -637,8 +669,17 @@ if ($can_show_duplicates)
       );
     }
     
-    // Save to cache without clearing other filter variants
-    @file_put_contents($cache_filename, json_encode($duplicates));
+    // Save to cache atomically without clearing other filter variants
+    $tmp_cache_file = $cache_filename . '.' . uniqid('tmp_', true);
+    $encoded_cache = json_encode($duplicates);
+    if ($encoded_cache !== false && @file_put_contents($tmp_cache_file, $encoded_cache, LOCK_EX) !== false) {
+      if (!@rename($tmp_cache_file, $cache_filename)) {
+        @unlink($tmp_cache_file);
+        @file_put_contents($cache_filename, $encoded_cache, LOCK_EX);
+      }
+    } elseif (file_exists($tmp_cache_file)) {
+      @unlink($tmp_cache_file);
+    }
   }
 }
 
@@ -650,13 +691,14 @@ if ($can_show_duplicates)
 $all_ids = array();
 foreach ($duplicates as $group) {
   foreach ($group['IMAGES'] as $img) {
-    $all_ids[] = (int)$img['ID'];
+    $img_id_int = (int)$img['ID'];
+    $all_ids[$img_id_int] = $img_id_int;
   }
 }
 
 $favorites_map = array();
 if (!empty($all_ids)) {
-  $chunks = array_chunk($all_ids, 500);
+  $chunks = array_chunk(array_values($all_ids), 500);
   foreach ($chunks as $chunk) {
     $query = 'SELECT image_id, is_favorite FROM ' . FIND_DUPLICATES_TABLE . ' WHERE is_favorite = 1 AND image_id IN (' . implode(',', $chunk) . ')';
     $result = pwg_query($query);
@@ -745,8 +787,7 @@ foreach ($duplicates as $group) {
     'TOTAL_SIZE' => isset($group['TOTAL_SIZE']) ? $group['TOTAL_SIZE'] : l10n('No data'),
     'TOTAL_SIZE_BYTES' => isset($group['TOTAL_SIZE_BYTES']) ? $group['TOTAL_SIZE_BYTES'] : 0,
     'OLDEST_DATE_TS' => isset($group['OLDEST_DATE_TS']) ? $group['OLDEST_DATE_TS'] : null,
-    'IMAGES' => $group_images_updated,
-    'IMAGES_JSON' => json_encode($group_images_updated)
+    'IMAGES' => $group_images_updated
   );
   
   $total_images_in_groups += count($group_images_updated);

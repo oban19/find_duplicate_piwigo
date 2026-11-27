@@ -44,6 +44,9 @@ if (!function_exists('check_status')) {
 
 global $prefixeTable;
 $prefixeTable = 'piwigo_';
+if (!defined('IMAGES_TABLE')) {
+    define('IMAGES_TABLE', $prefixeTable . 'images');
+}
 
 // Mock add_event_handler so it doesn't fail when the plugin includes main.inc.php
 if (!function_exists('add_event_handler')) {
