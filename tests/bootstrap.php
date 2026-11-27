@@ -1,6 +1,30 @@
 <?php
-// Mocking global environment for Piwigo
-define('PHPWG_ROOT_PATH', __DIR__ . '/../');
+// Mocking global environment for Piwigo in an isolated temp directory
+// so tests never create _data/ or temporary files inside the repository workspace.
+$fd_test_root = rtrim(sys_get_temp_dir(), '/\\') . '/piwigo_fd_test_' . getmypid() . '_' . uniqid('', true) . '/';
+if (!is_dir($fd_test_root)) {
+    @mkdir($fd_test_root, 0755, true);
+}
+
+register_shutdown_function(function () use ($fd_test_root) {
+    if (!is_dir($fd_test_root)) {
+        return;
+    }
+    $iterator = new RecursiveIteratorIterator(
+        new RecursiveDirectoryIterator($fd_test_root, RecursiveDirectoryIterator::SKIP_DOTS),
+        RecursiveIteratorIterator::CHILD_FIRST
+    );
+    foreach ($iterator as $item) {
+        if ($item->isDir()) {
+            @rmdir($item->getPathname());
+        } else {
+            @unlink($item->getPathname());
+        }
+    }
+    @rmdir($fd_test_root);
+});
+
+define('PHPWG_ROOT_PATH', $fd_test_root);
 define('PHPWG_PLUGINS_PATH', PHPWG_ROOT_PATH . 'plugins/');
 if (!defined('ACCESS_ADMINISTRATOR')) {
     define('ACCESS_ADMINISTRATOR', 'admin');
@@ -28,10 +52,11 @@ if (!function_exists('add_event_handler')) {
     }
 }
 
-// Global variable to capture SQL queries for assertions
-global $captured_queries, $mock_fetch_assoc_result;
+// Global variables to capture SQL queries and mock fetch results for assertions
+global $captured_queries, $mock_fetch_assoc_result, $mock_fetch_assoc_queue;
 $captured_queries = [];
 $mock_fetch_assoc_result = false;
+$mock_fetch_assoc_queue = null;
 
 if (!function_exists('pwg_query')) {
     function pwg_query($query) {
@@ -43,7 +68,10 @@ if (!function_exists('pwg_query')) {
 
 if (!function_exists('pwg_db_fetch_assoc')) {
     function pwg_db_fetch_assoc($result) {
-        global $mock_fetch_assoc_result;
+        global $mock_fetch_assoc_result, $mock_fetch_assoc_queue;
+        if (is_array($mock_fetch_assoc_queue)) {
+            return !empty($mock_fetch_assoc_queue) ? array_shift($mock_fetch_assoc_queue) : false;
+        }
         return $mock_fetch_assoc_result;
     }
 }
@@ -53,9 +81,10 @@ require_once __DIR__ . '/../main.inc.php';
 
 // Helper function to reset test state
 function reset_captured_queries() {
-    global $captured_queries, $mock_fetch_assoc_result;
+    global $captured_queries, $mock_fetch_assoc_result, $mock_fetch_assoc_queue;
     $captured_queries = [];
     $mock_fetch_assoc_result = false;
+    $mock_fetch_assoc_queue = null;
 }
 
 // Helper function to get captured queries
